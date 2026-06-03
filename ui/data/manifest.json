@@ -1,0 +1,19 @@
+{
+  "runs": [
+    {
+      "id": "20260603_121824",
+      "generated_at": "2026-06-03T12:18:24.582993",
+      "file": "web_20260603_121824.json",
+      "stats": {
+        "ingested": 74,
+        "filtered": 74,
+        "qualified": 49,
+        "surfaced": 20,
+        "states": [
+          "UT"
+        ],
+        "days_back": 90
+      }
+    }
+  ]
+}

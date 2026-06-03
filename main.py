@@ -14,7 +14,7 @@ from client import ConstructConnectClient
 from filters import apply_hard_filters
 from qualifier import qualify_project
 from scorer import score_project
-from formatter import print_leaderboard, save_results
+from formatter import print_leaderboard, save_results, save_web_output
 
 
 def run_pipeline(dry_run: bool = False, limit: int = None) -> list:
@@ -113,6 +113,16 @@ def run_pipeline(dry_run: bool = False, limit: int = None) -> list:
     print("STAGE 5  Generating output...")
     print_leaderboard(top_leads)
     save_results(results, output_dir=OUTPUT_DIR)
+
+    run_stats = {
+        "ingested":  len(all_projects),
+        "filtered":  len(passed),
+        "qualified": qualified_count,
+        "surfaced":  len(top_leads),
+        "states":    SEARCH_STATES,
+        "days_back": SEARCH_DAYS_BACK,
+    }
+    save_web_output(results, run_stats, output_dir=OUTPUT_DIR)
 
     return top_leads
 

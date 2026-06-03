@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DealCenter — Opportunity Intelligence</title>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    [v-cloak] { display: none; }
+
+    .drawer-slide-enter-active,
+    .drawer-slide-leave-active { transition: transform 0.28s cubic-bezier(0.4,0,0.2,1); }
+    .drawer-slide-enter-from,
+    .drawer-slide-leave-to   { transform: translateX(100%); }
+
+    .fade-enter-active, .fade-leave-active { transition: opacity 0.2s; }
+    .fade-enter-from, .fade-leave-to       { opacity: 0; }
+
+    .score-ring {
+      transform: rotate(-90deg);
+      transform-origin: 50% 50%;
+    }
+    .line-clamp-2 {
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+  </style>
+</head>
+
+<body class="bg-slate-950 text-slate-100 min-h-screen antialiased" style="font-family: ui-sans-serif, system-ui, sans-serif;">
+<div id="app" v-cloak>
+
+  <!-- ── Header ──────────────────────────────────────────────── -->
+  <header class="bg-slate-900/80 backdrop-blur border-b border-slate-800 sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between gap-4">
+
+      <!-- Logo -->
+      <div class="flex items-center gap-3 shrink-0">
+        <div class="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-sm select-none">DC</div>
+        <span class="font-semibold text-base tracking-tight">DealCenter</span>
+        <span class="text-slate-600 text-sm hidden sm:block">by FTDS</span>
+      </div>
+
+      <!-- Stats chips -->
+      <div class="flex items-center gap-2 flex-wrap justify-end text-xs">
+        <span class="bg-green-900/50 text-green-300 border border-green-800/60 rounded-full px-3 py-1 font-medium">
+          🔥 {{ hotCount }} hot
+        </span>
+        <span class="bg-amber-900/50 text-amber-300 border border-amber-800/60 rounded-full px-3 py-1 font-medium">
+          ⚡ {{ warmCount }} warm
+        </span>
+        <span class="bg-slate-800 text-slate-400 border border-slate-700 rounded-full px-3 py-1">
+          {{ stats.states?.join(', ') || 'UT' }} · {{ stats.days_back || 90 }}d
+        </span>
+        <span class="bg-slate-800 text-slate-500 border border-slate-700 rounded-full px-3 py-1">
+          {{ formattedDate }}
+        </span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── Loading state ───────────────────────────────────────── -->
+  <div v-if="loading" class="flex flex-col items-center justify-center h-96 gap-4 text-slate-500">
+    <svg class="w-8 h-8 animate-spin" viewBox="0 0 24 24" fill="none">
+      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+    </svg>
+    <p class="text-sm">Loading leads…</p>
+  </div>
+
+  <!-- ── Error state ─────────────────────────────────────────── -->
+  <div v-else-if="error" class="max-w-md mx-auto mt-20 p-6 bg-red-950/50 border border-red-900 rounded-xl text-center">
+    <p class="text-red-400 font-medium mb-2">Could not load data</p>
+    <p class="text-red-500 text-sm font-mono">{{ error }}</p>
+    <p class="text-slate-500 text-xs mt-4">
+      Make sure you're serving from the <code class="bg-slate-800 px-1 rounded">ui/</code> directory:<br/>
+      <code class="bg-slate-800 px-1 rounded text-slate-400">python -m http.server 8080</code>
+    </p>
+  </div>
+
+  <!-- ── Main content ────────────────────────────────────────── -->
+  <main v-else class="max-w-7xl mx-auto px-6 py-6">
+
+    <!-- Pipeline stats bar -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+      <div class="bg-slate-800/60 rounded-xl p-4 border border-slate-700/50">
+        <div class="text-2xl font-bold text-slate-100">{{ stats.ingested?.toLocaleString() }}</div>
+        <div class="text-xs text-slate-500 mt-0.5">Projects ingested</div>
+      </div>
+      <div class="bg-slate-800/60 rounded-xl p-4 border border-slate-700/50">
+        <div class="text-2xl font-bold text-slate-100">{{ stats.filtered?.toLocaleString() }}</div>
+        <div class="text-xs text-slate-500 mt-0.5">Passed hard filter</div>
+      </div>
+      <div class="bg-slate-800/60 rounded-xl p-4 border border-slate-700/50">
+        <div class="text-2xl font-bold text-blue-400">{{ stats.qualified?.toLocaleString() }}</div>
+        <div class="text-xs text-slate-500 mt-0.5">AI qualified</div>
+      </div>
+      <div class="bg-slate-800/60 rounded-xl p-4 border border-slate-700/50">
+        <div class="text-2xl font-bold text-green-400">{{ filteredLeads.length }}</div>
+        <div class="text-xs text-slate-500 mt-0.5">Shown (with filters)</div>
+      </div>
+    </div>
+
+    <!-- Filter bar -->
+    <div class="flex flex-wrap gap-3 mb-6">
+      <!-- Search -->
+      <div class="relative flex-1 min-w-48">
+        <svg class="absolute left-3 top-2.5 w-4 h-4 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+        </svg>
+        <input v-model="filters.search" type="text" placeholder="Search projects, GCs, cities…"
+          class="w-full bg-slate-800 border border-slate-700 rounded-lg pl-9 pr-4 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+      </div>
+
+      <!-- Status tier -->
+      <select v-model="filters.statusTier"
+        class="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-300 focus:outline-none focus:ring-1 focus:ring-blue-500">
+        <option value="all">All statuses</option>
+        <option value="hot">🔥 Hot (Award / Under Construction)</option>
+        <option value="warm">⚡ Warm (GC Bidding / Sub-Bidding)</option>
+        <option value="watch">👁 Watch</option>
+      </select>
+
+      <!-- Min score -->
+      <div class="flex items-center gap-2 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2">
+        <span class="text-xs text-slate-500 whitespace-nowrap">Score ≥</span>
+        <input v-model.number="filters.minScore" type="range" min="0" max="90" step="5"
+          class="w-24 accent-blue-500" />
+        <span class="text-sm font-medium text-slate-300 w-6">{{ filters.minScore }}</span>
+      </div>
+
+      <!-- Services -->
+      <div class="flex items-center gap-2">
+        <label v-for="svc in ['dumpster','toilet','washout']" :key="svc"
+          class="flex items-center gap-1.5 bg-slate-800 border rounded-lg px-3 py-2 cursor-pointer text-sm transition-colors"
+          :class="filters.services.includes(svc)
+            ? 'border-blue-500 text-blue-300'
+            : 'border-slate-700 text-slate-400 hover:border-slate-600'">
+          <input type="checkbox" :value="svc" v-model="filters.services" class="hidden" />
+          <span>{{ svcIcon(svc) }}</span>
+          <span class="capitalize">{{ svc }}</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Empty state -->
+    <div v-if="filteredLeads.length === 0" class="text-center py-20 text-slate-500">
+      <p class="text-lg mb-2">No leads match your filters</p>
+      <button @click="resetFilters" class="text-sm text-blue-400 hover:text-blue-300">Reset filters</button>
+    </div>
+
+    <!-- Lead cards grid -->
+    <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div v-for="lead in filteredLeads" :key="lead.id"
+        @click="selectLead(lead)"
+        class="group bg-slate-800/70 hover:bg-slate-800 border border-slate-700/60 hover:border-blue-500/60 rounded-xl p-4 cursor-pointer transition-all duration-150 hover:shadow-lg hover:shadow-blue-500/5 flex flex-col gap-3">
+
+        <!-- Top row: score ring + title + status badge -->
+        <div class="flex items-start gap-3">
+          <!-- Score ring -->
+          <div class="relative shrink-0 w-14 h-14">
+            <svg viewBox="0 0 36 36" class="score-ring w-14 h-14">
+              <circle cx="18" cy="18" r="15.9" fill="none" stroke="#1e293b" stroke-width="3.2"/>
+              <circle cx="18" cy="18" r="15.9" fill="none"
+                :stroke="scoreStroke(lead.score)" stroke-width="3.2"
+                stroke-linecap="round"
+                :stroke-dasharray="`${lead.score} ${100 - lead.score}`"
+                stroke-dashoffset="0"/>
+            </svg>
+            <div class="absolute inset-0 flex items-center justify-center">
+              <span class="text-sm font-bold leading-none" :class="scoreColor(lead.score)">{{ lead.score }}</span>
+            </div>
+          </div>
+
+          <!-- Title + badge -->
+          <div class="flex-1 min-w-0">
+            <div class="flex items-start justify-between gap-1 mb-1.5">
+              <span class="text-[10px] text-slate-600 font-mono">#{{ lead.rank }}</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0"
+                :class="tierBadge(lead.project.status_tier)">
+                {{ lead.project.status }}
+              </span>
+            </div>
+            <h3 class="text-sm font-semibold leading-snug text-slate-100 line-clamp-2 group-hover:text-white">
+              {{ lead.project.title }}
+            </h3>
+          </div>
+        </div>
+
+        <!-- Value + location -->
+        <div class="flex items-center gap-2 text-sm">
+          <span class="font-semibold text-slate-200">{{ lead.project.value_label }}</span>
+          <span class="text-slate-600">·</span>
+          <span class="text-slate-400 truncate">{{ lead.project.location.city }}, {{ lead.project.location.state }}</span>
+        </div>
+
+        <!-- Primary GC / company -->
+        <div v-if="lead.companies.length" class="flex items-center gap-2">
+          <div class="w-6 h-6 rounded bg-slate-700 flex items-center justify-center text-[10px] font-bold text-slate-400 shrink-0">
+            {{ initials(lead.companies[0].name) }}
+          </div>
+          <span class="text-xs text-slate-400 truncate">{{ lead.companies[0].name }}</span>
+        </div>
+
+        <!-- Revenue estimate -->
+        <div v-if="lead.revenue.total_high > 0">
+          <div class="flex justify-between items-center mb-1">
+            <span class="text-[10px] text-slate-600 uppercase tracking-wider">Revenue opportunity</span>
+            <span class="text-xs font-medium text-blue-300">{{ fmtRevenue(lead.revenue) }}</span>
+          </div>
+          <div class="h-1.5 bg-slate-700 rounded-full overflow-hidden">
+            <div class="h-full bg-gradient-to-r from-blue-600 to-blue-400 rounded-full"
+              :style="{ width: revenueBarPct(lead.revenue) }"></div>
+          </div>
+        </div>
+
+        <!-- Services tags -->
+        <div class="flex gap-1.5 flex-wrap">
+          <span v-for="svc in lead.qualification.services" :key="svc"
+            class="text-[10px] bg-slate-700/80 text-slate-400 rounded px-2 py-0.5 capitalize">
+            {{ svcIcon(svc) }} {{ svc }}
+          </span>
+        </div>
+
+        <!-- Footer: view prompt -->
+        <div class="flex items-center justify-end pt-1 border-t border-slate-700/50">
+          <span class="text-[10px] text-slate-600 group-hover:text-blue-400 transition-colors">
+            View executive summary →
+          </span>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ── Detail Drawer ────────────────────────────────────────── -->
+  <transition name="fade">
+    <div v-if="selectedLead" class="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" @click="closeDrawer"/>
+  </transition>
+
+  <transition name="drawer-slide">
+    <aside v-if="selectedLead"
+      class="fixed right-0 top-0 bottom-0 z-50 w-full max-w-xl bg-slate-900 border-l border-slate-800 flex flex-col overflow-hidden shadow-2xl">
+
+      <!-- Drawer header -->
+      <div class="shrink-0 border-b border-slate-800 px-6 py-5">
+        <div class="flex items-start justify-between gap-3">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-1.5 flex-wrap">
+              <span class="text-3xl font-bold" :class="scoreColor(selectedLead.score)">{{ selectedLead.score }}</span>
+              <span class="text-slate-600 text-sm mt-1">/ 100</span>
+              <span class="text-xs px-2 py-1 rounded-full font-medium" :class="tierBadge(selectedLead.project.status_tier)">
+                {{ selectedLead.project.status }}
+              </span>
+            </div>
+            <h2 class="text-base font-semibold text-slate-100 leading-snug">{{ selectedLead.project.title }}</h2>
+            <p class="text-sm text-slate-500 mt-0.5">
+              {{ selectedLead.project.value_label }} · {{ selectedLead.project.location.city }}, {{ selectedLead.project.location.state }}
+            </p>
+          </div>
+          <button @click="closeDrawer" class="text-slate-500 hover:text-slate-300 transition-colors mt-1 shrink-0">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Drawer body (scrollable) -->
+      <div class="flex-1 overflow-y-auto">
+
+        <!-- Score breakdown -->
+        <section class="px-6 py-5 border-b border-slate-800">
+          <h3 class="section-title mb-4">Score Breakdown</h3>
+          <div class="space-y-3">
+            <div v-for="(comp, key) in selectedLead.score_breakdown" :key="key">
+              <div class="flex justify-between text-sm mb-1.5">
+                <span class="text-slate-400">{{ comp.label }}</span>
+                <span class="font-semibold text-slate-200">{{ comp.points }}<span class="text-slate-600 font-normal"> / {{ comp.max }}</span></span>
+              </div>
+              <div class="h-2 bg-slate-700/80 rounded-full overflow-hidden">
+                <div class="h-full rounded-full transition-all duration-500"
+                  :class="scoreBarColor(comp.points, comp.max)"
+                  :style="{ width: (comp.points / comp.max * 100) + '%' }"/>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Why actionable -->
+        <section class="px-6 py-5 border-b border-slate-800">
+          <h3 class="section-title mb-3">Why Actionable</h3>
+          <p class="text-sm text-slate-200 leading-relaxed">{{ selectedLead.qualification.why_actionable }}</p>
+        </section>
+
+        <!-- Contributing factors -->
+        <section v-if="selectedLead.qualification.factors.length" class="px-6 py-5 border-b border-slate-800">
+          <h3 class="section-title mb-3">Contributing Factors</h3>
+          <ul class="space-y-2">
+            <li v-for="f in selectedLead.qualification.factors" :key="f" class="flex gap-2.5 text-sm">
+              <span class="text-green-400 shrink-0 mt-0.5">✓</span>
+              <span class="text-slate-300 leading-relaxed">{{ f }}</span>
+            </li>
+          </ul>
+        </section>
+
+        <!-- Blockers -->
+        <section v-if="selectedLead.qualification.blockers.length" class="px-6 py-5 border-b border-slate-800">
+          <h3 class="section-title mb-3">Blockers / Risks</h3>
+          <ul class="space-y-2">
+            <li v-for="b in selectedLead.qualification.blockers" :key="b" class="flex gap-2.5 text-sm">
+              <span class="text-amber-400 shrink-0 mt-0.5">⚠</span>
+              <span class="text-slate-300 leading-relaxed">{{ b }}</span>
+            </li>
+          </ul>
+        </section>
+
+        <!-- Revenue -->
+        <section v-if="selectedLead.revenue.total_high > 0" class="px-6 py-5 border-b border-slate-800">
+          <h3 class="section-title mb-3">Revenue Opportunity</h3>
+          <div class="bg-slate-800/60 border border-slate-700/50 rounded-xl p-4">
+            <div class="text-2xl font-bold text-blue-300 mb-0.5">{{ fmtRevenueFull(selectedLead.revenue) }}</div>
+            <div class="text-sm text-slate-500">over {{ selectedLead.revenue.duration_months }} months</div>
+            <div v-if="selectedLead.revenue.basis" class="text-xs text-slate-600 mt-3 leading-relaxed border-t border-slate-700/50 pt-3">
+              {{ selectedLead.revenue.basis }}
+            </div>
+          </div>
+        </section>
+
+        <!-- Recommended action -->
+        <section class="px-6 py-5 border-b border-slate-800">
+          <h3 class="section-title mb-3">Recommended Action</h3>
+          <div class="bg-blue-950/40 border border-blue-900/60 rounded-xl p-4 text-sm text-blue-100 leading-relaxed">
+            {{ selectedLead.qualification.recommended_action }}
+          </div>
+        </section>
+
+        <!-- Companies -->
+        <section v-if="selectedLead.companies.length" class="px-6 py-5 border-b border-slate-800">
+          <h3 class="section-title mb-3">Companies Involved</h3>
+          <div class="space-y-2.5">
+            <div v-for="co in selectedLead.companies" :key="co.name" class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-lg bg-slate-700 flex items-center justify-center text-xs font-bold text-slate-300 shrink-0">
+                {{ initials(co.name) }}
+              </div>
+              <div class="min-w-0">
+                <div class="text-sm font-medium text-slate-200 truncate">{{ co.name }}</div>
+                <div v-if="co.city" class="text-xs text-slate-500">{{ co.city }}</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Source -->
+        <section class="px-6 py-5">
+          <h3 class="section-title mb-3">Source</h3>
+          <div class="flex items-center justify-between">
+            <div class="text-xs text-slate-600 font-mono">ID: {{ selectedLead.id }}</div>
+            <a v-if="selectedLead.project.url" :href="selectedLead.project.url" target="_blank"
+              class="text-sm text-blue-400 hover:text-blue-300 transition-colors flex items-center gap-1">
+              ConstructConnect
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+              </svg>
+            </a>
+          </div>
+        </section>
+
+      </div><!-- /drawer body -->
+    </aside>
+  </transition>
+
+</div><!-- /app -->
+
+<style>
+  .section-title {
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #475569; /* slate-600 */
+  }
+</style>
+
+<script>
+const { createApp } = Vue;
+
+createApp({
+  data() {
+    return {
+      leads: [],
+      stats: {},
+      generatedAt: null,
+      filters: { search: '', statusTier: 'all', minScore: 0, services: [] },
+      selectedLead: null,
+      loading: true,
+      error: null,
+      // Revenue bar max for normalization ($500K = full bar)
+      revenueMax: 500_000,
+    };
+  },
+
+  computed: {
+    filteredLeads() {
+      return this.leads.filter(lead => {
+        const q = this.filters.search.trim().toLowerCase();
+        if (q) {
+          const hay = [
+            lead.project.title,
+            lead.project.location.city,
+            lead.project.status,
+            ...lead.companies.map(c => c.name),
+          ].join(' ').toLowerCase();
+          if (!hay.includes(q)) return false;
+        }
+        if (this.filters.statusTier !== 'all' && lead.project.status_tier !== this.filters.statusTier) return false;
+        if (lead.score < this.filters.minScore) return false;
+        if (this.filters.services.length > 0) {
+          const ok = this.filters.services.every(s => lead.qualification.services.includes(s));
+          if (!ok) return false;
+        }
+        return true;
+      });
+    },
+    hotCount()  { return this.leads.filter(l => l.project.status_tier === 'hot').length; },
+    warmCount() { return this.leads.filter(l => l.project.status_tier === 'warm').length; },
+    formattedDate() {
+      if (!this.generatedAt) return '';
+      return new Date(this.generatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    },
+  },
+
+  methods: {
+    async loadData() {
+      try {
+        const res = await fetch('./data/leads_latest.json');
+        if (!res.ok) throw new Error(`HTTP ${res.status} — ${res.statusText}`);
+        const data = await res.json();
+        this.leads       = data.leads || [];
+        this.stats       = data.stats || {};
+        this.generatedAt = data.generated_at;
+        this.loading = false;
+      } catch (e) {
+        this.error   = e.message;
+        this.loading = false;
+      }
+    },
+
+    selectLead(lead) { this.selectedLead = lead; },
+    closeDrawer()    { this.selectedLead = null; },
+    resetFilters()   { this.filters = { search: '', statusTier: 'all', minScore: 0, services: [] }; },
+
+    scoreColor(score) {
+      if (score >= 75) return 'text-green-400';
+      if (score >= 60) return 'text-amber-400';
+      if (score >= 40) return 'text-blue-400';
+      return 'text-slate-500';
+    },
+    scoreStroke(score) {
+      if (score >= 75) return '#4ade80';
+      if (score >= 60) return '#fbbf24';
+      if (score >= 40) return '#60a5fa';
+      return '#64748b';
+    },
+    scoreBarColor(pts, max) {
+      const pct = pts / max;
+      if (pct >= 0.75) return 'bg-green-500';
+      if (pct >= 0.5)  return 'bg-blue-500';
+      return 'bg-slate-500';
+    },
+
+    tierBadge(tier) {
+      return {
+        hot:   'bg-green-900/60 text-green-300 border border-green-800/70',
+        warm:  'bg-amber-900/60 text-amber-300 border border-amber-800/70',
+        watch: 'bg-slate-700/60 text-slate-400 border border-slate-600/70',
+      }[tier] || 'bg-slate-700/60 text-slate-400 border border-slate-600/70';
+    },
+
+    svcIcon(svc) {
+      return { dumpster: '🗑️', toilet: '🚻', washout: '💧' }[svc] || '';
+    },
+
+    initials(name) {
+      return (name || '').split(' ').slice(0, 2).map(w => w[0] || '').join('').toUpperCase();
+    },
+
+    fmtRevenue(rev) {
+      if (!rev || !rev.total_high) return null;
+      const fmt = v => v >= 1_000_000 ? `$${(v/1_000_000).toFixed(1)}M` : `$${Math.round(v/1000)}K`;
+      return `${fmt(rev.total_low)} – ${fmt(rev.total_high)}`;
+    },
+
+    fmtRevenueFull(rev) {
+      const fmt = v => v >= 1_000_000 ? `$${(v/1_000_000).toFixed(1)}M` : `$${(v/1000).toFixed(0)}K`;
+      return `${fmt(rev.total_low)} – ${fmt(rev.total_high)}`;
+    },
+
+    revenueBarPct(rev) {
+      if (!rev || !rev.total_high) return '0%';
+      return Math.min(100, (rev.total_high / this.revenueMax) * 100).toFixed(1) + '%';
+    },
+  },
+
+  mounted() {
+    this.loadData();
+    // Close drawer on Escape
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') this.closeDrawer(); });
+  },
+}).mount('#app');
+</script>
+</body>
+</html>
