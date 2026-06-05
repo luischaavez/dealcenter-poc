@@ -291,6 +291,9 @@ def to_web_lead(rank: int, result: dict) -> dict:
             "duration_months":revenue.get("duration_months") or 0,
             "basis":          _clean(revenue.get("assumptions")),
         },
+        # Sonnet-generated narrative sales brief (3 paragraphs, ~150 words).
+        # Empty string if not yet generated (dry-run, older data, or Sonnet error).
+        "narrative_summary": _clean(result.get("narrative_summary", "")),
     }
 
 

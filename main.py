@@ -15,6 +15,7 @@ from filters import apply_hard_filters
 from qualifier import qualify_project
 from scorer import score_project
 from formatter import print_leaderboard, save_results, save_web_output
+from summarizer import generate_summary
 
 
 def run_pipeline(dry_run: bool = False, limit: int = None) -> list:
@@ -108,6 +109,24 @@ def run_pipeline(dry_run: bool = False, limit: int = None) -> list:
     qualified.sort(key=lambda x: x["score_result"]["final_score"], reverse=True)
     top_leads = qualified[:MAX_LEADS_PER_RUN]
     print(f"  Top {len(top_leads)} leads selected\n")
+
+    # ── Stage 4.5: Sonnet Executive Summaries ─────────────────────────
+    print(f"STAGE 4.5  Generating sales briefs (Sonnet) for top {len(top_leads)} leads...")
+    print("  (System prompt cached after first call — subsequent calls are cheaper)\n")
+
+    for i, r in enumerate(top_leads, 1):
+        title_short = (r["project"].get("title") or "N/A")[:50]
+        print(f"  [{i:2d}/{len(top_leads)}]  {title_short:<52}", end="  ", flush=True)
+        try:
+            r["narrative_summary"] = generate_summary(
+                r["project"], r["ai_result"], r["score_result"]
+            )
+            print("✓")
+        except Exception as exc:
+            print(f"ERROR  {exc}")
+            r["narrative_summary"] = ""
+
+    print()
 
     # ── Stage 5: Output ────────────────────────────────────────────────
     print("STAGE 5  Generating output...")

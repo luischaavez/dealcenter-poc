@@ -274,6 +274,16 @@
       <!-- Drawer body (scrollable) -->
       <div class="flex-1 overflow-y-auto">
 
+        <!-- Sales Brief (Sonnet-generated narrative) -->
+        <section v-if="selectedLead.narrative_summary" class="px-6 py-5 border-b border-slate-800 bg-slate-800/30">
+          <h3 class="section-title mb-3">Sales Brief</h3>
+          <div class="space-y-3">
+            <p v-for="(para, i) in selectedLead.narrative_summary.split('\n\n').filter(p => p.trim())"
+               :key="i"
+               class="text-sm text-slate-200 leading-relaxed">{{ para }}</p>
+          </div>
+        </section>
+
         <!-- Score breakdown -->
         <section class="px-6 py-5 border-b border-slate-800">
           <h3 class="section-title mb-4">Score Breakdown</h3>
