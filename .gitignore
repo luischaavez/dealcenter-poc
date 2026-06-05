@@ -9,4 +9,5 @@ output/
 frontend/node_modules/
 frontend/dist/
 frontend/.tanstack/
+frontend/.vite/
 dealcenter.db
