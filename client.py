@@ -6,7 +6,11 @@ API key is passed as a query parameter per their auth scheme.
 import time
 import requests
 from typing import Iterator
-from config import CONSTRUCTCONNECT_API_KEY, CONSTRUCTCONNECT_BASE_URL, SEARCH_STATES, SEARCH_DAYS_BACK
+from config import (
+    CONSTRUCTCONNECT_API_KEY, CONSTRUCTCONNECT_BASE_URL,
+    SEARCH_STATES, SEARCH_DAYS_BACK,
+    ACTIVE_STATUSES, TARGET_CC_CATEGORIES, TARGET_VALUE_RANGES,
+)
 
 
 class ConstructConnectClient:
@@ -30,6 +34,27 @@ class ConstructConnectClient:
                 "dates": [{"value": -days_back, "type": "LastUpdatedDate"}],
                 "searchTextTarget": "Details",
                 "contentType": "CuratedProject, ItbProject",
+
+                # ── API-level pre-filters ───────────────────────────────────
+                # Pushed to CC before we download anything. Cuts payload by
+                # ~80% vs fetching all projects and filtering client-side.
+                #
+                # status: only statuses where GC outreach makes sense.
+                "status": list(ACTIVE_STATUSES),
+
+                # projectCategory: exclude "Service, Maintenance and Supply"
+                # contracts (no physical construction site = no dumpsters).
+                "projectCategory": ["Construction"],
+
+                # category: FullTilt target building types, using exact CC
+                # taxonomy strings (must match what the API returns in `categories`).
+                "category": TARGET_CC_CATEGORIES,
+
+                # projectValueRange: $500K+ OR undisclosed ("Not Available").
+                # Using ranges instead of minProjectValue to preserve undisclosed-
+                # budget projects — large projects often don't publish a value
+                # until GC bidding starts.
+                "projectValueRange": TARGET_VALUE_RANGES,
             },
         }
         if states:
