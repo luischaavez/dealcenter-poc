@@ -294,6 +294,14 @@ def to_web_lead(rank: int, result: dict) -> dict:
         # Sonnet-generated narrative sales brief (3 paragraphs, ~150 words).
         # Empty string if not yet generated (dry-run, older data, or Sonnet error).
         "narrative_summary": _clean(result.get("narrative_summary", "")),
+
+        # Ledger alert: what changed since the last run this project appeared in.
+        # null  → known project, no changes
+        # "new" → first time seen
+        # "status_changed" → projectStatus changed (highest priority signal)
+        # "updated"        → other key fields changed (value, companies, dates)
+        "alert":        result.get("alert"),
+        "alert_detail": result.get("alert_detail"),
     }
 
 

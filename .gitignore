@@ -5,3 +5,4 @@ __pycache__/
 *.pyo
 output/
 .DS_Store
+dealcenter.db
