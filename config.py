@@ -14,28 +14,61 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 # $500K gives a good signal-to-noise balance (60% of projects, ~$2K-$15K revenue/yr each).
 MIN_PROJECT_VALUE = int(os.getenv("MIN_PROJECT_VALUE", "500000"))
 
-# --- Target Building Types (FullTilt's target market) ---
-# These generate construction debris + require on-site sanitation
+# --- API-level pre-filters (ConstructConnect exact values) ---
+# These are pushed directly to the CC API to reduce download volume before we even
+# run client-side filtering. Values must match CC's taxonomy exactly.
+#
+# Rule: if the API supports it natively → filter there. Client-side filters
+# then serve as a safety net ("belt and suspenders"), not the primary gate.
+
+# Exact `categories` field values from CC's taxonomy (what appears in project responses).
+# Used in filters.category — projects must match AT LEAST ONE of these.
+TARGET_CC_CATEGORIES = [
+    "Medical", "Health Care",                          # Healthcare
+    "Educational",                                      # Education
+    "Industrial",                                       # Industrial / Logistics
+    "Multi-Residential", "Senior Living / Assisted Care", "Mixed Use",  # Multifamily
+    "Retail", "Office", "Hotel / Motel / Resort",      # Commercial
+    "Municipal", "Fire / Police",                       # Civic / Government
+    "Roads / Highways",                                 # Infra with large on-site crews
+]
+
+# Pre-calculated projectValueRange strings the API accepts.
+# "Not Available" = undisclosed budget — kept because large projects often don't
+# publish a budget until GC bidding starts. Excluding them would miss big wins.
+TARGET_VALUE_RANGES = [
+    "$500k - $1 Million",
+    "$1 Million - $5 Million",
+    "$5 Million - $10 Million",
+    "$10 Million - $100 Million",
+    "$100 Million +",
+    "Not Available",
+]
+
+# --- Target Building Types (client-side fallback) ---
+# Used by filters.py for partial/keyword matching on subCategories, buildingUsesString,
+# and any field the API category filter doesn't cover. Broader than TARGET_CC_CATEGORIES.
 TARGET_CATEGORY_KEYWORDS = [
-    # Healthcare — ConstructConnect uses: "Medical", "Health Care"
+    # Healthcare
     "hospital", "medical", "health care", "healthcare", "clinic", "surgery center",
-    # Education — CC uses: "Educational"
+    # Education
     "educational", "school", "university", "college", "education", "campus",
-    # Industrial / Logistics — CC uses: "Industrial"
+    # Industrial / Logistics
     "industrial", "manufacturing", "warehouse", "distribution", "data center",
-    # Multi-family residential — CC uses: "Multi-Residential"
+    # Multi-family residential
     "multi-residential", "apartment", "multi-family", "multifamily", "senior living",
     "mixed use", "mixed-use",
-    # Commercial — CC uses: "Retail", "Office"
+    # Commercial
     "retail", "office", "shopping", "hotel", "hospitality",
-    # Civic / Government — CC uses: "Municipal", "Fire / Police"
+    # Civic / Government
     "municipal", "government", "courthouse", "fire / police", "fire station",
-    # Infrastructure with large on-site crews (toilets apply) — CC uses: "Roads / Highways"
+    # Infrastructure with large on-site crews
     "roads / highways", "highway", "road", "bridge",
 ]
 
 # --- Project Status: Active Pursuit Window ---
-# Statuses where outreach to GC makes sense
+# Statuses where outreach to GC makes sense.
+# Also pushed to the API via filters.status.
 ACTIVE_STATUSES = {
     "GC Bidding",
     "Sub-Bidding",

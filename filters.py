@@ -1,6 +1,16 @@
 """
-Hard filter rules — applied before AI qualification to reduce volume cheaply.
-All rules operate on structured API fields only (no LLM needed).
+Hard filter rules — applied client-side after the API pre-filter stage.
+
+Architecture note — two-layer filtering:
+  Layer 1 (API, client.py):  status, projectCategory, category, projectValueRange
+      Reduces the download payload by ~80% before any data touches this module.
+  Layer 2 (client-side, here): belt-and-suspenders checks + logic the API can't express
+      (partial keyword matching on subCategories, pure-infra detection, etc.)
+
+The checks below that mirror Layer 1 (is_construction_category, has_active_status,
+meets_value_threshold, matches_target_building_type) are intentionally kept as safety
+nets — they catch edge cases where the API returns data outside the filter window and
+make the behavior predictable even if the payload changes.
 
 Key data findings from ConstructConnect Utah sample (300 projects):
   - `categories` is a LIST, not a string — must flatten before keyword search
@@ -45,7 +55,11 @@ def _category_text(project: dict) -> str:
 # ── Individual checks ────────────────────────────────────────────────────────
 
 def is_construction_category(project: dict) -> bool:
-    """Exclude 'Service Maintenance and Supply' projects — no physical construction."""
+    """
+    Exclude 'Service Maintenance and Supply' projects — no physical construction.
+    [API mirror] Also sent as filters.projectCategory=["Construction"] — this is the
+    client-side safety net.
+    """
     raw = project.get("projectCategory") or ""
     cat = _flatten(raw)
     # Blank = assume construction (field may be absent on some records)
@@ -53,15 +67,22 @@ def is_construction_category(project: dict) -> bool:
 
 
 def meets_value_threshold(project: dict) -> bool:
-    """Project value must exceed the configured minimum.
-    Projects with no value disclosed are allowed through (could be large undisclosed budgets).
+    """
+    Project value must meet the configured minimum.
+    Projects with no value disclosed (projectValue=0) are allowed through —
+    large projects often don't publish a budget until GC bidding starts.
+    [API mirror] Also sent as filters.projectValueRange — this catches any
+    numeric values that slip through the range buckets.
     """
     value = project.get("projectValue") or 0
     return value == 0 or value >= MIN_PROJECT_VALUE
 
 
 def has_active_status(project: dict) -> bool:
-    """Only pursue projects in stages where outreach makes sense."""
+    """
+    Only pursue projects in stages where outreach makes sense.
+    [API mirror] Also sent as filters.status — this is the client-side safety net.
+    """
     return project.get("projectStatus", "") in ACTIVE_STATUSES
 
 
@@ -70,7 +91,13 @@ def matches_target_building_type(project: dict) -> bool:
     Project must be a building type that generates construction debris and
     requires on-site sanitation.
 
+    Uses keyword matching across categories + subCategories + buildingUsesString,
+    which is broader than the API's exact-match category filter and catches
+    edge cases like subCategories that don't map to a top-level target category.
+
     Note: `categories` comes back as a list from the API, so we flatten first.
+    [API mirror] Also sent as filters.category (exact CC strings) — this adds
+    partial/keyword matching on top.
     """
     combined = _category_text(project)
     return any(kw in combined for kw in _TARGET_KW)

@@ -6,15 +6,28 @@ Usage:
   python main.py --dry-run            # Skip AI; just show what passes hard filters
   python main.py --limit 50           # Cap at 50 ingested projects (for testing)
   python main.py --limit 50 --dry-run # Fast test: 50 projects, no AI cost
+
+Pipeline stages:
+  1  Ingest        — fetch from ConstructConnect (pre-filtered at API level)
+  2  Hard Filter   — client-side safety nets
+  2.5 Memory Check — ledger lookup: new / cached / changed
+  3  AI Qualify    — Haiku on new+changed projects only
+  4  Score & Rank  — composite 0-100 score
+  4.5 Summaries   — Sonnet sales briefs for top 20
+  5  Output        — JSON files + SQLite
 """
 
 import argparse
+from datetime import datetime
+
 from config import SEARCH_STATES, SEARCH_DAYS_BACK, MAX_LEADS_PER_RUN, OUTPUT_DIR
 from client import ConstructConnectClient
 from filters import apply_hard_filters
 from qualifier import qualify_project
 from scorer import score_project
 from formatter import print_leaderboard, save_results, save_web_output
+from summarizer import generate_summary
+from ledger import check_project, update_project, save_run, save_leads
 
 
 def run_pipeline(dry_run: bool = False, limit: int = None) -> list:
@@ -26,6 +39,8 @@ def run_pipeline(dry_run: bool = False, limit: int = None) -> list:
     if limit:
         print(f"  Ingest cap: {limit} projects")
     print(f"{'═' * 65}\n")
+
+    run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     # ── Stage 1: Ingest ────────────────────────────────────────────────
     print("STAGE 1  Ingesting from ConstructConnect...")
@@ -74,40 +89,142 @@ def run_pipeline(dry_run: bool = False, limit: int = None) -> list:
         print("No projects passed hard filters. Exiting.")
         return []
 
-    # ── Stage 3: AI Qualification ──────────────────────────────────────
-    print(f"STAGE 3  AI qualification ({len(passed)} projects)...")
-    print("  (System prompt cached after first call — subsequent calls are cheaper)\n")
+    # ── Stage 2.5: Memory Check ────────────────────────────────────────
+    print("STAGE 2.5  Checking project ledger...")
 
-    results = []
-    qualified_count = 0
+    to_qualify   = []  # list of (project, alert)
+    from_cache   = []  # list of result dicts with cached ai/score results
 
-    for i, project in enumerate(passed, 1):
-        title_short = (project.get("title") or "N/A")[:50]
-        print(f"  [{i:3d}/{len(passed)}]  {title_short:<52}", end="  ", flush=True)
-        try:
-            ai_result = qualify_project(project)
+    for project in passed:
+        alert, cached = check_project(project)
+
+        if alert is None:
+            # Known, unchanged — re-score with current data (cheap) but skip Haiku
+            ai_result    = cached["ai_result"]
             score_result = score_project(project, ai_result)
-            results.append(
-                {"project": project, "ai_result": ai_result, "score_result": score_result}
-            )
-            if ai_result.get("qualifies"):
-                qualified_count += 1
-                print(f"✓  score={score_result['final_score']}")
-            else:
-                reason = (ai_result.get("disqualify_reason") or "")[:50]
-                print(f"✗  {reason}")
-        except Exception as exc:
-            print(f"ERROR  {exc}")
-            results.append({"project": project, "error": str(exc)})
+            from_cache.append({
+                "project":      project,
+                "ai_result":    ai_result,
+                "score_result": score_result,
+                "alert":        None,
+                "alert_detail": None,
+            })
+        else:
+            to_qualify.append((project, alert))
 
-    print(f"\n  Qualified: {qualified_count} / {len(passed)}\n")
+    new_count     = sum(1 for _, a in to_qualify if a == "new")
+    changed_count = sum(1 for _, a in to_qualify if a != "new")
+    cached_count  = len(from_cache)
+
+    print(f"  New:            {new_count}")
+    print(f"  Changed:        {changed_count}  (status/value/companies updated)")
+    print(f"  Cached (no AI): {cached_count}")
+    print()
+
+    # ── Stage 3: AI Qualification ──────────────────────────────────────
+    fresh_results = []
+    qualified_fresh = 0
+
+    if to_qualify:
+        print(f"STAGE 3  AI qualification ({len(to_qualify)} new/changed projects)...")
+        print("  (System prompt cached after first call — subsequent calls are cheaper)\n")
+
+        for i, (project, alert) in enumerate(to_qualify, 1):
+            title_short = (project.get("title") or "N/A")[:50]
+            alert_tag   = f"[{alert}]" if alert != "new" else "[new]"
+            print(f"  [{i:3d}/{len(to_qualify)}]  {title_short:<50} {alert_tag:<17}", end="  ", flush=True)
+            try:
+                ai_result    = qualify_project(project)
+                score_result = score_project(project, ai_result)
+
+                # Determine alert_detail for status changes
+                alert_detail = None
+                if alert == "status_changed":
+                    from database import get_db, Project as ProjectModel
+                    with get_db() as session:
+                        existing = session.get(ProjectModel, str(project.get("projectId") or ""))
+                        if existing:
+                            alert_detail = f"{existing.last_status} → {project.get('projectStatus', '')}"
+
+                fresh_results.append({
+                    "project":      project,
+                    "ai_result":    ai_result,
+                    "score_result": score_result,
+                    "alert":        alert,
+                    "alert_detail": alert_detail,
+                })
+
+                if ai_result.get("qualifies"):
+                    qualified_fresh += 1
+                    print(f"✓  score={score_result['final_score']}")
+                else:
+                    reason = (ai_result.get("disqualify_reason") or "")[:45]
+                    print(f"✗  {reason}")
+
+            except Exception as exc:
+                print(f"ERROR  {exc}")
+                fresh_results.append({"project": project, "error": str(exc),
+                                      "alert": alert, "alert_detail": None})
+    else:
+        print("STAGE 3  AI qualification — all projects cached, skipping.\n")
+
+    # Merge cached + fresh results
+    results = from_cache + fresh_results
+    qualified_count = sum(1 for r in results if r.get("ai_result", {}).get("qualifies"))
+
+    if to_qualify:
+        cached_qualifying = sum(1 for r in from_cache if r.get("ai_result", {}).get("qualifies"))
+        print(f"\n  Qualified (fresh): {qualified_fresh} / {len(to_qualify)}")
+        print(f"  Qualified (cached): {cached_qualifying}")
+        print(f"  Total qualified:    {qualified_count}\n")
+
+    # ── Update ledger for all processed projects ───────────────────────
+    print("  Updating project ledger...")
+    for r in results:
+        if r.get("ai_result"):
+            update_project(
+                project      = r["project"],
+                ai_result    = r["ai_result"],
+                score_result = r.get("score_result", {}),
+                run_id       = run_id,
+                alert        = r.get("alert"),
+                alert_detail = r.get("alert_detail"),
+            )
+    print()
 
     # ── Stage 4: Score & Rank ──────────────────────────────────────────
     print("STAGE 4  Ranking qualified leads...")
     qualified = [r for r in results if r.get("ai_result", {}).get("qualifies")]
     qualified.sort(key=lambda x: x["score_result"]["final_score"], reverse=True)
     top_leads = qualified[:MAX_LEADS_PER_RUN]
+
+    # Stamp rank onto each result dict (used by save_leads and formatter)
+    for i, r in enumerate(top_leads, 1):
+        r["rank"] = i
+
     print(f"  Top {len(top_leads)} leads selected\n")
+
+    # ── Stage 4.5: Sonnet Executive Summaries ─────────────────────────
+    print(f"STAGE 4.5  Generating sales briefs (Sonnet) for top {len(top_leads)} leads...")
+    print("  (System prompt cached after first call — subsequent calls are cheaper)\n")
+
+    for i, r in enumerate(top_leads, 1):
+        title_short = (r["project"].get("title") or "N/A")[:50]
+        # Re-use existing summary if project was cached AND summary exists
+        if r.get("alert") is None and r.get("narrative_summary"):
+            print(f"  [{i:2d}/{len(top_leads)}]  {title_short:<52}  (cached)")
+            continue
+        print(f"  [{i:2d}/{len(top_leads)}]  {title_short:<52}", end="  ", flush=True)
+        try:
+            r["narrative_summary"] = generate_summary(
+                r["project"], r["ai_result"], r["score_result"]
+            )
+            print("✓")
+        except Exception as exc:
+            print(f"ERROR  {exc}")
+            r["narrative_summary"] = ""
+
+    print()
 
     # ── Stage 5: Output ────────────────────────────────────────────────
     print("STAGE 5  Generating output...")
@@ -123,6 +240,11 @@ def run_pipeline(dry_run: bool = False, limit: int = None) -> list:
         "days_back": SEARCH_DAYS_BACK,
     }
     save_web_output(results, run_stats, output_dir=OUTPUT_DIR)
+
+    # Persist run + leads to SQLite
+    save_run(run_id, run_stats)
+    save_leads(run_id, top_leads)
+    print(f"  SQLite           : dealcenter.db  (runs + leads + ledger)")
 
     return top_leads
 
