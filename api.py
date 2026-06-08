@@ -117,7 +117,8 @@ async def lifespan(app: FastAPI):
 
 
 def _make_cors_origins() -> list[str]:
-    raw = os.environ.get("CORS_ORIGINS", "http://localhost:5173")
+    # Check both CORS_ORIGINS and CORS_ORIGIN (common typo)
+    raw = os.environ.get("CORS_ORIGINS") or os.environ.get("CORS_ORIGIN", "")
     origins = [o.strip() for o in raw.split(",") if o.strip()]
     # Always include common localhost dev variants
     dev_extras = [
@@ -137,6 +138,8 @@ app = FastAPI(title="DealCenter API", version="0.1.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_make_cors_origins(),
+    # Covers all Vercel deployments: production + preview URLs
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
