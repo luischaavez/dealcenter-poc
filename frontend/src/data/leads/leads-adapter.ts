@@ -58,5 +58,8 @@ export function adaptLead(lead: Lead): Opportunity {
       value: part.points,
       max: part.max,
     })),
+    salesBrief: lead.narrative_summary ?? "",
+    alert: lead.alert ?? null,
+    alertDetail: lead.alert_detail ?? null,
   };
 }

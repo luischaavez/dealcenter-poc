@@ -54,6 +54,9 @@ export interface Lead {
     duration_months: number;
     basis: string;
   };
+  narrative_summary?: string;
+  alert?: string | null;
+  alert_detail?: string | null;
 }
 
 export interface LeadsDataFile {

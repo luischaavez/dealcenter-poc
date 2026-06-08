@@ -1,25 +1,21 @@
 import { useMemo, useState } from "react";
 import { AlertTriangle, ArrowRight, Filter } from "lucide-react";
-import { activityEvents } from "@/features/change-monitor/model/change-monitor.selectors";
+import { useLeads } from "@/lib/use-leads";
 import {
   StatusBadge,
   StatusTierBadge,
 } from "@/features/opportunities/components/opportunity-badges";
 import { OpportunityDrawer } from "@/features/opportunities/components/opportunity-drawer";
-import type { ChangeEvent } from "@/features/change-monitor/model/change-monitor.selectors";
 import type { Opportunity } from "@/features/opportunities/model/opportunity.types";
 import { formatRelative } from "@/utils/date";
 import { cn } from "@/utils/cn";
 
-type Row = ChangeEvent;
-
 export function ChangeMonitorPage() {
+  const { activityEvents } = useLeads();
   const [filter, setFilter] = useState<"all" | "hot" | "warm">("all");
   const [selected, setSelected] = useState<Opportunity | null>(null);
 
-  const rows: Row[] = useMemo(() => {
-    return activityEvents;
-  }, []);
+  const rows = useMemo(() => activityEvents, [activityEvents]);
 
   const filtered = rows.filter((r) => {
     if (filter === "all") return true;

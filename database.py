@@ -17,7 +17,7 @@ from datetime import datetime
 from pathlib import Path
 
 from sqlalchemy import (
-    Boolean, Column, DateTime, Float, Integer, String, Text, create_engine,
+    Boolean, Column, DateTime, Float, Integer, String, Text, create_engine, text,
 )
 from sqlalchemy.orm import DeclarativeBase, Session
 
@@ -104,10 +104,19 @@ class Lead(Base):
     ai_result         = Column(Text)                 # JSON
     score_result      = Column(Text)                 # JSON
     narrative_summary = Column(Text)
+    project_snapshot  = Column(Text)                 # full raw project JSON at pipeline run time
 
 
 # ── Create all tables (idempotent — safe to call on every startup) ────────────
 Base.metadata.create_all(ENGINE)
+
+# ── Startup migration: add project_snapshot if it doesn't exist yet ──────────
+with ENGINE.connect() as _conn:
+    try:
+        _conn.execute(text("ALTER TABLE leads ADD COLUMN project_snapshot TEXT"))
+        _conn.commit()
+    except Exception:
+        pass  # column already exists — no-op
 
 
 def get_db() -> Session:

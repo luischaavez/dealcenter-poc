@@ -10,4 +10,6 @@ frontend/node_modules/
 frontend/dist/
 frontend/.tanstack/
 frontend/.vite/
+frontend/.vercel/output/
+frontend/.nitro/
 dealcenter.db

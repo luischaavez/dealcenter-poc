@@ -37,4 +37,7 @@ export interface Opportunity {
   blockers: string[];
   recommendedAction: string;
   scoreBreakdown: { label: string; value: number; max: number }[];
+  salesBrief: string;
+  alert: string | null;
+  alertDetail: string | null;
 }

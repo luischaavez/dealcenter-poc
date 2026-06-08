@@ -204,5 +204,6 @@ def save_leads(run_id: str, top_leads: list) -> None:
                 ai_result         = json.dumps(r.get("ai_result", {})),
                 score_result      = json.dumps(r.get("score_result", {})),
                 narrative_summary = r.get("narrative_summary", ""),
+                project_snapshot  = json.dumps(r.get("project", {})),
             ))
         session.commit()
