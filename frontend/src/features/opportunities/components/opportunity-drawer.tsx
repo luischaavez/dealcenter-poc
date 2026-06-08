@@ -10,14 +10,11 @@ import {
   ArrowUpRight,
   Activity,
 } from "lucide-react";
-import type { Opportunity } from "@/lib/leads-data";
-import {
-  formatCurrency,
-  formatDateTime,
-  formatRelative,
-} from "@/lib/leads-data";
-import { StatusBadge, StatusTierBadge } from "./badges";
-import { cn } from "@/lib/utils";
+import type { Opportunity } from "@/features/opportunities/model/opportunity.types";
+import { formatCurrency } from "@/utils/currency";
+import { formatDateTime, formatRelative } from "@/utils/date";
+import { StatusBadge, StatusTierBadge } from "./opportunity-badges";
+import { cn } from "@/utils/cn";
 
 export function OpportunityDrawer({
   opp,
