@@ -20,17 +20,10 @@ import {
   YAxis,
 } from "recharts";
 import {
-  changeTrend,
-  dashboardMetrics,
   formatDateTime,
   formatCurrency,
-  generatedAt,
-  opportunities,
-  pipelineByScore,
-  revenueByStage,
-  runStats,
-  statusDistribution,
 } from "@/lib/leads-data";
+import { useLeads } from "@/lib/leads-context";
 import { ScoreCell, StatusBadge, StatusTierBadge } from "@/components/badges";
 
 export const Route = createFileRoute("/_app/dashboard")({
@@ -38,6 +31,7 @@ export const Route = createFileRoute("/_app/dashboard")({
 });
 
 function DashboardPage() {
+  const { changeTrend, dashboardMetrics, generatedAt, opportunities, pipelineByScore, revenueByStage, runStats, statusDistribution } = useLeads();
   const top = opportunities.slice(0, 5);
   return (
     <div className="px-6 py-6 max-w-[1500px] mx-auto space-y-6">

@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { AlertTriangle, ArrowRight, Filter } from "lucide-react";
-import { activityEvents, formatRelative } from "@/lib/leads-data";
+import { formatRelative } from "@/lib/leads-data";
+import { useLeads } from "@/lib/leads-context";
 import { StatusBadge, StatusTierBadge } from "@/components/badges";
 import { OpportunityDrawer } from "@/components/opportunity-drawer";
 import type { ChangeEvent, Opportunity } from "@/lib/leads-data";
@@ -14,12 +15,11 @@ export const Route = createFileRoute("/_app/changes")({
 type Row = ChangeEvent;
 
 function ChangesPage() {
+  const { activityEvents } = useLeads();
   const [filter, setFilter] = useState<"all" | "hot" | "warm">("all");
   const [selected, setSelected] = useState<Opportunity | null>(null);
 
-  const rows: Row[] = useMemo(() => {
-    return activityEvents;
-  }, []);
+  const rows: Row[] = useMemo(() => activityEvents, [activityEvents]);
 
   const filtered = rows.filter((r) => {
     if (filter === "all") return true;

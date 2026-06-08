@@ -70,7 +70,7 @@ interface Lead {
   alert_detail?: string | null;
 }
 
-interface LeadsDataFile {
+export interface LeadsDataFile {
   run_id: string;
   generated_at: string;
   stats: {
@@ -82,6 +82,33 @@ interface LeadsDataFile {
     days_back: number;
   };
   leads: Lead[];
+}
+
+/** All derived data computed from one pipeline run payload. */
+export interface ComputedLeadsData {
+  runId: string;
+  generatedAt: string;
+  runStats: LeadsDataFile["stats"];
+  opportunities: Opportunity[];
+  allStatuses: string[];
+  allServices: Service[];
+  allStatusTiers: StatusTier[];
+  dashboardMetrics: {
+    ingested: number;
+    filtered: number;
+    qualified: number;
+    surfaced: number;
+    hot: number;
+    warm: number;
+    revenuePotential: number;
+    recentChanges: number;
+    passThroughRate: number;
+  };
+  statusDistribution: { status: string; count: number }[];
+  pipelineByScore: { bucket: string; count: number }[];
+  revenueByStage: { stage: string; revenue: number }[];
+  activityEvents: ChangeEvent[];
+  changeTrend: { day: string; changes: number; hot: number }[];
 }
 
 export interface ChangeEvent {
@@ -153,154 +180,175 @@ const getSourceName = (url: string) => {
   }
 };
 
-export const runId = data.run_id;
-export const generatedAt = data.generated_at;
-export const runStats = data.stats;
+/**
+ * Compute all derived data from a raw pipeline payload.
+ * Used both for the static build-time import and for live API responses.
+ */
+export function computeLeadsData(payload: LeadsDataFile): ComputedLeadsData {
+  const mapped: Opportunity[] = payload.leads
+    .map((lead) => ({
+      id: lead.id,
+      rank: lead.rank,
+      score: lead.score,
+      name: lead.project.title,
+      status: lead.project.status,
+      statusTier: lead.project.status_tier,
+      city: lead.project.location.city,
+      state: lead.project.location.state,
+      projectValue: lead.project.value ?? 0,
+      revenueOpportunity: midpoint(
+        lead.revenue.total_low,
+        lead.revenue.total_high,
+      ),
+      revenueLow: lead.revenue.total_low,
+      revenueHigh: lead.revenue.total_high,
+      monthlyLow: lead.revenue.monthly_low,
+      monthlyHigh: lead.revenue.monthly_high,
+      durationMonths: lead.revenue.duration_months,
+      revenueBasis: lead.revenue.basis,
+      services: lead.qualification.services.map(
+        (service) => serviceLabels[service] ?? service,
+      ),
+      companies: lead.companies,
+      source: getSourceName(lead.project.url),
+      sourceUrl: lead.project.url,
+      lastUpdated: lead.project.dates.last_updated,
+      bidDate: lead.project.dates.bid,
+      startDate: lead.project.dates.start,
+      categories: lead.project.categories,
+      constructionTypes: lead.project.construction_types,
+      executiveSummary: lead.qualification.why_actionable,
+      whyActionable: lead.qualification.factors,
+      blockers: lead.qualification.blockers,
+      recommendedAction: lead.qualification.recommended_action,
+      scoreBreakdown: Object.values(lead.score_breakdown).map((part) => ({
+        label: part.label,
+        value: part.points,
+        max: part.max,
+      })),
+      salesBrief: lead.narrative_summary ?? "",
+      alert: lead.alert ?? null,
+      alertDetail: lead.alert_detail ?? null,
+    }))
+    .sort((a, b) => a.rank - b.rank);
 
-export const opportunities: Opportunity[] = data.leads
-  .map((lead) => ({
-    id: lead.id,
-    rank: lead.rank,
-    score: lead.score,
-    name: lead.project.title,
-    status: lead.project.status,
-    statusTier: lead.project.status_tier,
-    city: lead.project.location.city,
-    state: lead.project.location.state,
-    projectValue: lead.project.value ?? 0,
-    revenueOpportunity: midpoint(
-      lead.revenue.total_low,
-      lead.revenue.total_high,
-    ),
-    revenueLow: lead.revenue.total_low,
-    revenueHigh: lead.revenue.total_high,
-    monthlyLow: lead.revenue.monthly_low,
-    monthlyHigh: lead.revenue.monthly_high,
-    durationMonths: lead.revenue.duration_months,
-    revenueBasis: lead.revenue.basis,
-    services: lead.qualification.services.map(
-      (service) => serviceLabels[service] ?? service,
-    ),
-    companies: lead.companies,
-    source: getSourceName(lead.project.url),
-    sourceUrl: lead.project.url,
-    lastUpdated: lead.project.dates.last_updated,
-    bidDate: lead.project.dates.bid,
-    startDate: lead.project.dates.start,
-    categories: lead.project.categories,
-    constructionTypes: lead.project.construction_types,
-    executiveSummary: lead.qualification.why_actionable,
-    whyActionable: lead.qualification.factors,
-    blockers: lead.qualification.blockers,
-    recommendedAction: lead.qualification.recommended_action,
-    scoreBreakdown: Object.values(lead.score_breakdown).map((part) => ({
-      label: part.label,
-      value: part.points,
-      max: part.max,
-    })),
-    salesBrief: lead.narrative_summary ?? "",
-    alert: lead.alert ?? null,
-    alertDetail: lead.alert_detail ?? null,
-  }))
-  .sort((a, b) => a.rank - b.rank);
+  const unique = <T>(values: T[]) => Array.from(new Set(values));
+  const countBy = <T extends string>(values: T[]) =>
+    values.reduce<Record<T, number>>(
+      (acc, value) => ({ ...acc, [value]: (acc[value] ?? 0) + 1 }),
+      {} as Record<T, number>,
+    );
 
-const unique = <T>(values: T[]) => Array.from(new Set(values));
+  const statusTierCounts = countBy(mapped.map((o) => o.statusTier));
 
-export const allStatuses = unique(opportunities.map((opp) => opp.status));
-export const allServices = unique(opportunities.flatMap((opp) => opp.services));
-export const allStatusTiers = unique(
-  opportunities.map((opp) => opp.statusTier),
-);
+  const scoreBuckets = [
+    { bucket: "90-100", min: 90, max: 100 },
+    { bucket: "80-89", min: 80, max: 89.999 },
+    { bucket: "70-79", min: 70, max: 79.999 },
+    { bucket: "60-69", min: 60, max: 69.999 },
+    { bucket: "50-59", min: 50, max: 59.999 },
+    { bucket: "0-49", min: 0, max: 49.999 },
+  ];
 
-const countBy = <T extends string>(values: T[]) =>
-  values.reduce<Record<T, number>>(
-    (acc, value) => ({ ...acc, [value]: (acc[value] ?? 0) + 1 }),
-    {} as Record<T, number>,
+  const statusDist = Object.entries(
+    countBy(mapped.map((o) => o.status)),
+  ).map(([status, count]) => ({ status, count }));
+
+  const events: ChangeEvent[] = mapped
+    .map((opp) => ({
+      date: opp.lastUpdated,
+      label:
+        opp.alert === "new"
+          ? "New project detected"
+          : opp.alert === "status_changed"
+            ? "Status changed"
+            : opp.alert === "updated"
+              ? "Details updated"
+              : "Project active",
+      detail:
+        opp.alert === "status_changed" && opp.alertDetail
+          ? opp.alertDetail
+          : `${opp.status} / ${formatStatusTier(opp.statusTier)} tier`,
+      statusTier: opp.statusTier,
+      opp,
+    }))
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  const trend = events.reduce<{ day: string; changes: number; hot: number }[]>(
+    (acc, event) => {
+      const day = new Date(event.date).toLocaleDateString("en-US", {
+        weekday: "short",
+      });
+      const existing = acc.find((item) => item.day === day);
+      if (existing) {
+        existing.changes += 1;
+        if (event.statusTier === "hot") existing.hot += 1;
+        return acc;
+      }
+      acc.push({ day, changes: 1, hot: event.statusTier === "hot" ? 1 : 0 });
+      return acc;
+    },
+    [],
   );
 
-const statusTierCounts = countBy(opportunities.map((opp) => opp.statusTier));
+  return {
+    runId: payload.run_id,
+    generatedAt: payload.generated_at,
+    runStats: payload.stats,
+    opportunities: mapped,
+    allStatuses: unique(mapped.map((o) => o.status)),
+    allServices: unique(mapped.flatMap((o) => o.services)),
+    allStatusTiers: unique(mapped.map((o) => o.statusTier)),
+    dashboardMetrics: {
+      ingested: payload.stats.ingested,
+      filtered: payload.stats.filtered,
+      qualified: payload.stats.qualified,
+      surfaced: payload.stats.surfaced,
+      hot: statusTierCounts.hot ?? 0,
+      warm: statusTierCounts.warm ?? 0,
+      revenuePotential: mapped.reduce((sum, o) => sum + o.revenueOpportunity, 0),
+      recentChanges: mapped.filter((o) => Boolean(o.lastUpdated)).length,
+      passThroughRate:
+        payload.stats.ingested > 0
+          ? payload.stats.filtered / payload.stats.ingested
+          : 0,
+    },
+    statusDistribution: statusDist,
+    pipelineByScore: scoreBuckets
+      .map(({ bucket, min, max }) => ({
+        bucket,
+        count: mapped.filter((o) => o.score >= min && o.score <= max).length,
+      }))
+      .filter((b) => b.count > 0),
+    revenueByStage: statusDist.map(({ status }) => ({
+      stage: status,
+      revenue: Math.round(
+        mapped
+          .filter((o) => o.status === status)
+          .reduce((sum, o) => sum + o.revenueOpportunity, 0) / 1000,
+      ),
+    })),
+    activityEvents: events,
+    changeTrend: trend,
+  };
+}
 
-export const dashboardMetrics = {
-  ingested: data.stats.ingested,
-  filtered: data.stats.filtered,
-  qualified: data.stats.qualified,
-  surfaced: data.stats.surfaced,
-  hot: statusTierCounts.hot ?? 0,
-  warm: statusTierCounts.warm ?? 0,
-  revenuePotential: opportunities.reduce(
-    (sum, opp) => sum + opp.revenueOpportunity,
-    0,
-  ),
-  recentChanges: opportunities.filter((opp) => Boolean(opp.lastUpdated)).length,
-  passThroughRate:
-    data.stats.ingested > 0 ? data.stats.filtered / data.stats.ingested : 0,
-};
+// ── Static build-time data (used as immediate fallback before API hydrates) ──
+const _static = computeLeadsData(data as LeadsDataFile);
 
-export const statusDistribution = Object.entries(
-  countBy(opportunities.map((opp) => opp.status)),
-).map(([status, count]) => ({ status, count }));
-
-const scoreBuckets = [
-  { bucket: "90-100", min: 90, max: 100 },
-  { bucket: "80-89", min: 80, max: 89.999 },
-  { bucket: "70-79", min: 70, max: 79.999 },
-  { bucket: "60-69", min: 60, max: 69.999 },
-  { bucket: "50-59", min: 50, max: 59.999 },
-  { bucket: "0-49", min: 0, max: 49.999 },
-];
-
-export const pipelineByScore = scoreBuckets
-  .map(({ bucket, min, max }) => ({
-    bucket,
-    count: opportunities.filter((opp) => opp.score >= min && opp.score <= max)
-      .length,
-  }))
-  .filter((bucket) => bucket.count > 0);
-
-export const revenueByStage = statusDistribution.map(({ status }) => ({
-  stage: status,
-  revenue: Math.round(
-    opportunities
-      .filter((opp) => opp.status === status)
-      .reduce((sum, opp) => sum + opp.revenueOpportunity, 0) / 1000,
-  ),
-}));
-
-export const activityEvents: ChangeEvent[] = opportunities
-  .map((opp) => ({
-    date: opp.lastUpdated,
-    label:
-      opp.alert === "new"
-        ? "New project detected"
-        : opp.alert === "status_changed"
-          ? "Status changed"
-          : opp.alert === "updated"
-            ? "Details updated"
-            : "Project active",
-    detail:
-      opp.alert === "status_changed" && opp.alertDetail
-        ? opp.alertDetail
-        : `${opp.status} / ${formatStatusTier(opp.statusTier)} tier`,
-    statusTier: opp.statusTier,
-    opp,
-  }))
-  .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-export const changeTrend = activityEvents.reduce<
-  { day: string; changes: number; hot: number }[]
->((acc, event) => {
-  const day = new Date(event.date).toLocaleDateString("en-US", {
-    weekday: "short",
-  });
-  const existing = acc.find((item) => item.day === day);
-  if (existing) {
-    existing.changes += 1;
-    if (event.statusTier === "hot") existing.hot += 1;
-    return acc;
-  }
-  acc.push({ day, changes: 1, hot: event.statusTier === "hot" ? 1 : 0 });
-  return acc;
-}, []);
+export const runId              = _static.runId;
+export const generatedAt        = _static.generatedAt;
+export const runStats           = _static.runStats;
+export const opportunities      = _static.opportunities;
+export const allStatuses        = _static.allStatuses;
+export const allServices        = _static.allServices;
+export const allStatusTiers     = _static.allStatusTiers;
+export const dashboardMetrics   = _static.dashboardMetrics;
+export const statusDistribution = _static.statusDistribution;
+export const pipelineByScore    = _static.pipelineByScore;
+export const revenueByStage     = _static.revenueByStage;
+export const activityEvents     = _static.activityEvents;
+export const changeTrend        = _static.changeTrend;
 
 export function formatStatusTier(tier: StatusTier) {
   return tier.charAt(0).toUpperCase() + tier.slice(1);

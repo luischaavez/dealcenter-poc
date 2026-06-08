@@ -15,18 +15,15 @@ import {
   X,
 } from "lucide-react";
 import {
-  allServices,
-  allStatuses,
-  allStatusTiers,
   formatCurrency,
   formatRelative,
   formatStatusTier,
-  opportunities,
   type Opportunity,
   type OpportunityStatus,
   type Service,
   type StatusTier,
 } from "@/lib/leads-data";
+import { useLeads } from "@/lib/leads-context";
 import { OpportunityDrawer } from "@/components/opportunity-drawer";
 import { AlertBadge, StatusTierBadge } from "@/components/badges";
 import { cn } from "@/lib/utils";
@@ -38,6 +35,7 @@ export const Route = createFileRoute("/_app/opportunities")({
 type SortKey = "tier" | "score" | "revenue" | "updated";
 
 function OpportunitiesPage() {
+  const { opportunities, allStatuses, allServices, allStatusTiers } = useLeads();
   const [q, setQ] = useState("");
   const [statuses, setStatuses] = useState<OpportunityStatus[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -98,7 +96,7 @@ function OpportunitiesPage() {
       0,
     );
     return { hot, warm, updated, pipeline };
-  }, []);
+  }, [opportunities]);
 
   const activeFilters: { key: string; label: string; clear: () => void }[] = [
     ...statuses.map((s) => ({
