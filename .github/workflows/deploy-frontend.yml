@@ -6,6 +6,8 @@ on:
     paths:
       - "frontend/**"
       - "ui/data/leads_latest.json"
+      - ".github/workflows/deploy-frontend.yml"
+  workflow_dispatch:
 
 jobs:
   deploy:
