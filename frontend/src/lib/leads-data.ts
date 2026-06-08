@@ -1,3 +1,4 @@
+// Data adapter: reads the latest pipeline run output and maps it to typed UI objects.
 import leadsDataJson from "../../../ui/data/leads_latest.json";
 
 export type StatusTier = "hot" | "warm" | (string & {});
