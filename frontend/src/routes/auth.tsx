@@ -39,11 +39,15 @@ function AuthPage() {
           <div className="size-8 rounded-md bg-primary flex items-center justify-center">
             <div
               className="size-3.5 bg-white"
-              style={{ clipPath: "polygon(0 0, 100% 0, 100% 70%, 70% 100%, 0 100%)" }}
+              style={{
+                clipPath: "polygon(0 0, 100% 0, 100% 70%, 70% 100%, 0 100%)",
+              }}
             />
           </div>
           <div className="leading-tight">
-            <div className="text-[14px] font-semibold tracking-tight">DealCenter</div>
+            <div className="text-[14px] font-semibold tracking-tight">
+              DealCenter
+            </div>
             <div className="text-[10px] uppercase tracking-[0.18em] text-white/55">
               Opportunity Intelligence
             </div>
@@ -52,14 +56,16 @@ function AuthPage() {
 
         <div className="relative max-w-md space-y-5">
           <div className="inline-flex items-center gap-2 px-2 py-1 rounded-full bg-white/8 text-[10px] uppercase tracking-wider text-white/70">
-            <span className="size-1.5 rounded-full bg-[#de422f]" /> Live pipeline
+            <span className="size-1.5 rounded-full bg-[#de422f]" /> Live
+            pipeline
           </div>
           <h2 className="text-[26px] leading-[1.2] font-medium tracking-tight">
-            Cut through 4,800+ construction signals to the 12 deals worth your week.
+            Cut through 4,800+ construction signals to the 12 deals worth your
+            week.
           </h2>
           <p className="text-[13px] text-white/65 leading-relaxed max-w-sm">
-            Continuous ingestion from ConstructConnect and Dodge Construction Central,
-            ranked by revenue opportunity and change velocity.
+            Continuous ingestion from ConstructConnect and Dodge Construction
+            Central, ranked by revenue opportunity and change velocity.
           </p>
         </div>
 
@@ -77,7 +83,9 @@ function AuthPage() {
             <div className="size-7 rounded-md bg-charcoal flex items-center justify-center">
               <div
                 className="size-3 bg-primary"
-                style={{ clipPath: "polygon(0 0, 100% 0, 100% 70%, 70% 100%, 0 100%)" }}
+                style={{
+                  clipPath: "polygon(0 0, 100% 0, 100% 70%, 70% 100%, 0 100%)",
+                }}
               />
             </div>
             <span className="font-semibold tracking-tight">DealCenter</span>
@@ -147,7 +155,9 @@ function AuthPage() {
 
           <div className="mt-10 pt-5 border-t border-border text-[11px] text-muted-foreground flex justify-between">
             <span>© DealCenter 2026</span>
-            <a className="hover:text-foreground" href="#">Security</a>
+            <a className="hover:text-foreground" href="#">
+              Security
+            </a>
           </div>
         </div>
       </div>
@@ -181,7 +191,9 @@ function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <div className="text-[18px] font-medium text-white num">{value}</div>
-      <div className="text-[10px] uppercase tracking-wider text-white/45 mt-0.5">{label}</div>
+      <div className="text-[10px] uppercase tracking-wider text-white/45 mt-0.5">
+        {label}
+      </div>
     </div>
   );
 }
