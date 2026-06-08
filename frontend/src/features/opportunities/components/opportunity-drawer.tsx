@@ -33,7 +33,7 @@ export function OpportunityDrawer({
     <>
       <div
         className={cn(
-          "fixed inset-0 bg-charcoal/30 backdrop-blur-[1px] z-40 transition-opacity",
+          "fixed inset-0 bg-black/45 backdrop-blur-[1px] z-40 transition-opacity",
           opp ? "opacity-100" : "opacity-0 pointer-events-none",
         )}
         onClick={onClose}
