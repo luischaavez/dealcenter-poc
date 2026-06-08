@@ -28,7 +28,7 @@ import {
   type StatusTier,
 } from "@/lib/leads-data";
 import { OpportunityDrawer } from "@/components/opportunity-drawer";
-import { StatusTierBadge } from "@/components/badges";
+import { AlertBadge, StatusTierBadge } from "@/components/badges";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_app/opportunities")({
@@ -422,9 +422,12 @@ function OpportunityCard({
       <div className="p-5 flex flex-col lg:flex-row gap-5">
         {/* LEFT: priority + project */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-2">
+          <div className="flex items-center gap-2 mb-2 flex-wrap">
             <StatusTierBadge tier={o.statusTier} />
             <StatusChip status={o.status} />
+            {o.alert && (
+              <AlertBadge alert={o.alert} detail={o.alertDetail} />
+            )}
             <span className="text-[11px] text-muted-foreground">
               · updated {formatRelative(o.lastUpdated)}
             </span>

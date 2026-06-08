@@ -62,6 +62,11 @@ interface Lead {
     duration_months: number;
     basis: string;
   };
+  // Sonnet-generated 3-paragraph sales narrative. Empty string if not yet generated.
+  narrative_summary?: string;
+  // Ledger change signal: "new" | "status_changed" | "updated" | null
+  alert?: string | null;
+  alert_detail?: string | null;
 }
 
 interface LeadsDataFile {
@@ -117,6 +122,11 @@ export interface Opportunity {
   blockers: string[];
   recommendedAction: string;
   scoreBreakdown: { label: string; value: number; max: number }[];
+  // Sonnet-generated 3-paragraph sales narrative (~150 words)
+  salesBrief: string;
+  // Ledger alert for this run
+  alert: string | null;
+  alertDetail: string | null;
 }
 
 const serviceLabels: Record<string, Service> = {
@@ -187,6 +197,9 @@ export const opportunities: Opportunity[] = data.leads
       value: part.points,
       max: part.max,
     })),
+    salesBrief: lead.narrative_summary ?? "",
+    alert: lead.alert ?? null,
+    alertDetail: lead.alert_detail ?? null,
   }))
   .sort((a, b) => a.rank - b.rank);
 
@@ -255,8 +268,18 @@ export const revenueByStage = statusDistribution.map(({ status }) => ({
 export const activityEvents: ChangeEvent[] = opportunities
   .map((opp) => ({
     date: opp.lastUpdated,
-    label: "Project updated",
-    detail: `${opp.status} / ${formatStatusTier(opp.statusTier)} tier`,
+    label:
+      opp.alert === "new"
+        ? "New project detected"
+        : opp.alert === "status_changed"
+          ? "Status changed"
+          : opp.alert === "updated"
+            ? "Details updated"
+            : "Project active",
+    detail:
+      opp.alert === "status_changed" && opp.alertDetail
+        ? opp.alertDetail
+        : `${opp.status} / ${formatStatusTier(opp.statusTier)} tier`,
     statusTier: opp.statusTier,
     opp,
   }))

@@ -9,6 +9,7 @@ import {
   ListPlus,
   ArrowUpRight,
   Activity,
+  FileText,
 } from "lucide-react";
 import type { Opportunity } from "@/lib/leads-data";
 import {
@@ -16,7 +17,7 @@ import {
   formatDateTime,
   formatRelative,
 } from "@/lib/leads-data";
-import { StatusBadge, StatusTierBadge } from "./badges";
+import { AlertBadge, StatusBadge, StatusTierBadge } from "./badges";
 import { cn } from "@/lib/utils";
 
 export function OpportunityDrawer({
@@ -65,12 +66,15 @@ function DrawerBody({
       {/* ===== SECTION 1: HEADER ===== */}
       <header className="sticky top-0 bg-background/95 backdrop-blur border-b border-border px-7 pt-5 pb-4 z-10">
         <div className="flex items-center justify-between gap-4 mb-3">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[10.5px] uppercase tracking-wider text-muted-foreground font-mono">
               {opp.id}
             </span>
             <span className="text-muted-foreground/40">·</span>
             <StatusTierBadge tier={opp.statusTier} />
+            {opp.alert && (
+              <AlertBadge alert={opp.alert} detail={opp.alertDetail} />
+            )}
           </div>
           <button
             onClick={onClose}
@@ -149,6 +153,20 @@ function DrawerBody({
           </div>
         </section>
 
+        {/* ===== SECTION 3b: SALES BRIEF (Sonnet narrative) ===== */}
+        {opp.salesBrief && (
+          <Section title="Sales Brief" icon={<FileText className="size-3" />}>
+            <div className="rounded-xl border border-border bg-card px-5 py-4 space-y-3 text-[13px] text-charcoal/90 leading-relaxed">
+              {opp.salesBrief
+                .split("\n\n")
+                .filter(Boolean)
+                .map((para, i) => (
+                  <p key={i}>{para}</p>
+                ))}
+            </div>
+          </Section>
+        )}
+
         {/* ===== SECTION 4: NEXT BEST ACTION ===== */}
         <section className="rounded-xl border border-primary/30 bg-primary/[0.04] p-5 relative overflow-hidden">
           <div className="absolute top-0 left-0 h-full w-1 bg-primary" />
@@ -214,9 +232,25 @@ function DrawerBody({
 
         {/* ===== SECTION 6: RECENT ACTIVITY ===== */}
         <Section title="Recent activity" icon={<Activity className="size-3" />}>
-          <div className="rounded-lg border border-border bg-card p-4 text-[12.5px] text-charcoal/90">
-            <div className="font-medium">Project updated</div>
-            <div className="text-muted-foreground mt-0.5">
+          <div className="rounded-lg border border-border bg-card p-4 text-[12.5px] text-charcoal/90 space-y-2">
+            {opp.alert && (
+              <div className="flex items-center gap-2 pb-2 border-b border-border">
+                <AlertBadge alert={opp.alert} detail={opp.alertDetail} />
+                <span className="text-muted-foreground text-[11.5px]">
+                  Detected this run
+                </span>
+              </div>
+            )}
+            <div className="font-medium">
+              {opp.alert === "new"
+                ? "First seen in DealCenter"
+                : opp.alert === "status_changed"
+                  ? `Status: ${opp.alertDetail ?? "changed"}`
+                  : opp.alert === "updated"
+                    ? "Key details updated"
+                    : "Project active"}
+            </div>
+            <div className="text-muted-foreground">
               {formatDateTime(opp.lastUpdated)} · {opp.status} /{" "}
               {opp.statusTier} tier
             </div>
