@@ -14,7 +14,7 @@ export function AppSidebar({ pathname }: { pathname: string }) {
   };
 
   return (
-    <aside className="w-60 shrink-0 bg-sidebar text-sidebar-foreground flex flex-col border-r border-sidebar-border">
+    <aside className="h-full w-60 shrink-0 bg-sidebar text-sidebar-foreground flex flex-col border-r border-sidebar-border">
       <div className="h-14 flex items-center gap-2 px-4 border-b border-sidebar-border">
         <div className="size-7 rounded-md bg-primary flex items-center justify-center">
           <div
