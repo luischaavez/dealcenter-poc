@@ -32,6 +32,8 @@ jobs:
       - name: Build (outputs to frontend/.vercel/output/)
         run: pnpm build
         working-directory: frontend
+        env:
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
 
       - name: Deploy to Vercel (production)
         run: npx vercel deploy --prebuilt --prod --yes --token "$VERCEL_TOKEN"
