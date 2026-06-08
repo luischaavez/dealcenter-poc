@@ -73,9 +73,6 @@ export function OpportunitiesPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <button className="h-9 px-3 inline-flex items-center gap-1.5 rounded-md border border-border bg-card text-[13px] hover:bg-secondary/60 transition-colors">
-              <Bell className="size-3.5" /> Alerts
-            </button>
             <button className="h-9 px-3.5 inline-flex items-center gap-1.5 rounded-md bg-foreground text-background text-[13px] font-medium hover:opacity-90 transition-opacity">
               <Sparkles className="size-3.5" /> Run intelligence
             </button>
