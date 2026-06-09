@@ -11,14 +11,11 @@ import {
   Activity,
   FileText,
 } from "lucide-react";
-import type { Opportunity } from "@/lib/leads-data";
-import {
-  formatCurrency,
-  formatDateTime,
-  formatRelative,
-} from "@/lib/leads-data";
-import { AlertBadge, StatusBadge, StatusTierBadge } from "./badges";
-import { cn } from "@/lib/utils";
+import type { Opportunity } from "@/features/opportunities/model/opportunity.types";
+import { formatCurrency } from "@/utils/currency";
+import { formatDateTime, formatRelative } from "@/utils/date";
+import { AlertBadge, StatusBadge, StatusTierBadge } from "./opportunity-badges";
+import { cn } from "@/utils/cn";
 
 export function OpportunityDrawer({
   opp,
@@ -37,7 +34,7 @@ export function OpportunityDrawer({
     <>
       <div
         className={cn(
-          "fixed inset-0 bg-charcoal/30 backdrop-blur-[1px] z-40 transition-opacity",
+          "fixed inset-0 bg-black/45 backdrop-blur-[1px] z-40 transition-opacity",
           opp ? "opacity-100" : "opacity-0 pointer-events-none",
         )}
         onClick={onClose}

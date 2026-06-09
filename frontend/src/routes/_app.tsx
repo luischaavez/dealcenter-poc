@@ -1,17 +1,18 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
-import { AppShell } from "@/components/app-shell";
+import { AppLayout } from "@/layouts/app-layout/app-layout";
+import { AUTH_STORAGE_KEY } from "@/constants/storage";
 
 export const Route = createFileRoute("/_app")({
   beforeLoad: () => {
     if (typeof window !== "undefined") {
-      if (!localStorage.getItem("dc_auth")) {
+      if (!localStorage.getItem(AUTH_STORAGE_KEY)) {
         throw redirect({ to: "/auth" });
       }
     }
   },
   component: () => (
-    <AppShell>
+    <AppLayout>
       <Outlet />
-    </AppShell>
+    </AppLayout>
   ),
 });

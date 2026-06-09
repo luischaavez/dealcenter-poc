@@ -40,14 +40,19 @@ export async function fetchRuns(): Promise<RunSummary[]> {
 }
 
 /** Fetch leads for a specific historical run. */
-export async function fetchRunById(runId: string): Promise<Record<string, unknown>> {
+export async function fetchRunById(
+  runId: string,
+): Promise<Record<string, unknown>> {
   const res = await fetch(`${API_URL}/runs/${runId}`);
   if (!res.ok) throw new Error(`API /runs/${runId} returned ${res.status}`);
   return res.json();
 }
 
 /** Trigger a new pipeline run. */
-export async function triggerPipeline(): Promise<{ accepted: boolean; message: string }> {
+export async function triggerPipeline(): Promise<{
+  accepted: boolean;
+  message: string;
+}> {
   const res = await fetch(`${API_URL}/pipeline/run`, { method: "POST" });
   if (!res.ok) throw new Error(`API /pipeline/run returned ${res.status}`);
   return res.json();

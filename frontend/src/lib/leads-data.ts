@@ -250,9 +250,9 @@ export function computeLeadsData(payload: LeadsDataFile): ComputedLeadsData {
     { bucket: "0-49", min: 0, max: 49.999 },
   ];
 
-  const statusDist = Object.entries(
-    countBy(mapped.map((o) => o.status)),
-  ).map(([status, count]) => ({ status, count }));
+  const statusDist = Object.entries(countBy(mapped.map((o) => o.status))).map(
+    ([status, count]) => ({ status, count }),
+  );
 
   const events: ChangeEvent[] = mapped
     .map((opp) => ({
@@ -306,7 +306,10 @@ export function computeLeadsData(payload: LeadsDataFile): ComputedLeadsData {
       surfaced: payload.stats.surfaced,
       hot: statusTierCounts.hot ?? 0,
       warm: statusTierCounts.warm ?? 0,
-      revenuePotential: mapped.reduce((sum, o) => sum + o.revenueOpportunity, 0),
+      revenuePotential: mapped.reduce(
+        (sum, o) => sum + o.revenueOpportunity,
+        0,
+      ),
       recentChanges: mapped.filter((o) => Boolean(o.lastUpdated)).length,
       passThroughRate:
         payload.stats.ingested > 0
@@ -336,19 +339,19 @@ export function computeLeadsData(payload: LeadsDataFile): ComputedLeadsData {
 // ── Static build-time data (used as immediate fallback before API hydrates) ──
 const _static = computeLeadsData(data as LeadsDataFile);
 
-export const runId              = _static.runId;
-export const generatedAt        = _static.generatedAt;
-export const runStats           = _static.runStats;
-export const opportunities      = _static.opportunities;
-export const allStatuses        = _static.allStatuses;
-export const allServices        = _static.allServices;
-export const allStatusTiers     = _static.allStatusTiers;
-export const dashboardMetrics   = _static.dashboardMetrics;
+export const runId = _static.runId;
+export const generatedAt = _static.generatedAt;
+export const runStats = _static.runStats;
+export const opportunities = _static.opportunities;
+export const allStatuses = _static.allStatuses;
+export const allServices = _static.allServices;
+export const allStatusTiers = _static.allStatusTiers;
+export const dashboardMetrics = _static.dashboardMetrics;
 export const statusDistribution = _static.statusDistribution;
-export const pipelineByScore    = _static.pipelineByScore;
-export const revenueByStage     = _static.revenueByStage;
-export const activityEvents     = _static.activityEvents;
-export const changeTrend        = _static.changeTrend;
+export const pipelineByScore = _static.pipelineByScore;
+export const revenueByStage = _static.revenueByStage;
+export const activityEvents = _static.activityEvents;
+export const changeTrend = _static.changeTrend;
 
 export function formatStatusTier(tier: StatusTier) {
   return tier.charAt(0).toUpperCase() + tier.slice(1);

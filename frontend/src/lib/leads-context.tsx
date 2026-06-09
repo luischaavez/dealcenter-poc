@@ -6,11 +6,7 @@
  *   2. If VITE_API_URL is set, fetch from the API and replace with live data.
  *   3. All routes call useLeads() instead of importing static constants.
  */
-import {
-  createContext,
-  useContext,
-  type ReactNode,
-} from "react";
+import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   computeLeadsData,
@@ -36,6 +32,7 @@ import {
 } from "./leads-data";
 
 import { fetchLatestLeads } from "./api";
+import { LeadsContext, type LeadsContextValue } from "./leads-context-value";
 
 const STATIC: ComputedLeadsData = {
   runId: staticRunId,
@@ -52,17 +49,6 @@ const STATIC: ComputedLeadsData = {
   activityEvents: staticActivityEvents,
   changeTrend: staticChangeTrend,
 };
-
-interface LeadsContextValue extends ComputedLeadsData {
-  isLive: boolean;     // true once API data has been loaded
-  isLoading: boolean;  // true while the first API fetch is in-flight
-}
-
-const LeadsContext = createContext<LeadsContextValue>({
-  ...STATIC,
-  isLive: false,
-  isLoading: false,
-});
 
 const API_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? "";
 
@@ -92,9 +78,4 @@ export function LeadsProvider({ children }: { children: ReactNode }) {
       {children}
     </LeadsContext.Provider>
   );
-}
-
-/** Drop-in replacement for direct leads-data imports in route components. */
-export function useLeads(): LeadsContextValue {
-  return useContext(LeadsContext);
 }

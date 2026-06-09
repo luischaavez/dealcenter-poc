@@ -150,7 +150,8 @@
     border-color: var(--color-border);
   }
 
-  html, body {
+  html,
+  body {
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
@@ -165,8 +166,12 @@
 }
 
 @layer utilities {
-  .text-charcoal { color: #232323; }
-  .bg-charcoal { background-color: #232323; }
+  .text-charcoal {
+    color: #232323;
+  }
+  .bg-charcoal {
+    background-color: #232323;
+  }
   .num {
     font-variant-numeric: tabular-nums;
     font-feature-settings: "tnum";

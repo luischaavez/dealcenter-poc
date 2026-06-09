@@ -1,7 +1,10 @@
-import { Zap, Plus, RefreshCw } from "lucide-react";
-import { cn } from "@/lib/utils";
-import type { OpportunityStatus, StatusTier } from "@/lib/leads-data";
-import { formatStatusTier } from "@/lib/leads-data";
+import { Plus, RefreshCw, Zap } from "lucide-react";
+import { cn } from "@/utils/cn";
+import type {
+  OpportunityStatus,
+  StatusTier,
+} from "@/features/opportunities/model/opportunity.types";
+import { formatStatusTier } from "@/features/opportunities/model/opportunity.selectors";
 
 export function StatusBadge({ status }: { status: OpportunityStatus }) {
   const styles =
