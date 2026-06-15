@@ -1,91 +1,73 @@
 """
-Dodge Construct Excel importer.
+Dodge Construct data importer — supports CSV exports from apps.construction.com.
 
-Dodge Data & Analytics exports project data as .xlsx files. Column names vary
-slightly between export types, so this parser uses flexible name matching.
+Dodge and ConstructConnect share the same underlying platform (apps.construction.com),
+so project IDs are identical across both sources. Dedup can use exact ID matching
+as a first pass before falling back to fuzzy matching.
 
 Usage:
     from dodge_client import DodgeClient
-    projects = DodgeClient.load_excel("path/to/dodge_export.xlsx")
-    # Returns list of dicts in the same internal format as ConstructConnect projects
+    projects = DodgeClient.load("path/to/export.csv")   # CSV
+    projects = DodgeClient.load("path/to/export.xlsx")  # Excel
 """
 
+import csv
 import re
 from pathlib import Path
 
-import openpyxl
 
-# ── Column aliases (case-insensitive, partial match allowed) ──────────────────
-# Maps internal field → list of possible Dodge column header substrings.
-_COLUMN_MAP = {
-    "dodge_id":        ["dodge project", "project number", "project id", "project #"],
-    "title":           ["project name", "name"],
-    "description":     ["description", "notes", "project notes"],
-    "status":          ["action", "stage", "status", "project stage"],
-    "category":        ["primary category", "category", "market segment", "project type"],
-    "sub_category":    ["sub category", "subcategory", "secondary category"],
-    "building_use":    ["building use", "building type", "use type"],
-    "city":            ["city"],
-    "state":           ["state"],
-    "zip":             ["zip", "postal"],
-    "value":           ["total value", "project value", "total project cost", "estimated value", "value"],
-    "bid_date":        ["bid date", "bid due"],
-    "start_date":      ["start date", "construction start", "est. start"],
-    "completion_date": ["completion date", "est. completion"],
-    "owner":           ["owner name", "owner"],
-    "architect":       ["architect", "engineer", "a/e"],
-    "gc":              ["general contractor", "gc name", "gc", "prime contractor"],
-    "contracting":     ["contracting method", "delivery method", "contract type"],
-}
+# ── Stage priority mapping ─────────────────────────────────────────────────────
+# Dodge ACTION STAGE(S) can be compound: "Bid Results Start", "GC Bidding Construction Documents"
+# We check tokens in priority order and return the most advanced stage found.
+#
+# Priority (highest to lowest):
+#   1. construction / start / notice of completion  → Under Construction
+#   2. bid results                                  → GC Bidding (bids in, pre-award)
+#   3. gc bidding                                   → GC Bidding
+#   4. sub bidding                                  → Sub-Bidding
+#   5. bidding / pre-qualification                  → GC Bidding
+#   6. everything else                              → Pre-Construction/Negotiated
 
-# ── Dodge stage → ConstructConnect status mapping ─────────────────────────────
-_STATUS_MAP = {
-    "bid":              "GC Bidding",
-    "bidding":          "GC Bidding",
-    "gc bidding":       "GC Bidding",
-    "pre-bid":          "Pre-Construction/Negotiated",
-    "pre bid":          "Pre-Construction/Negotiated",
-    "planning":         "Pre-Construction/Negotiated",
-    "design":           "Pre-Construction/Negotiated",
-    "pre-construction": "Pre-Construction/Negotiated",
-    "negotiated":       "Pre-Construction/Negotiated",
-    "awarded":          "Award",
-    "award":            "Award",
-    "sub-bidding":      "Sub-Bidding",
-    "sub bidding":      "Sub-Bidding",
-    "under construction": "Under Construction",
-    "construction":       "Under Construction",
-    "started":            "Under Construction",
-    "in progress":        "Under Construction",
-}
+_STAGE_PRIORITY = [
+    (["construction", "start", "notice of completion"], "Under Construction"),
+    (["bid results"],                                   "GC Bidding"),
+    (["gc bidding"],                                    "GC Bidding"),
+    (["sub bidding"],                                   "Sub-Bidding"),
+    (["bidding", "pre-qualification"],                  "GC Bidding"),
+]
+_STAGE_DEFAULT = "Pre-Construction/Negotiated"
 
 
-def _match_header(header: str, aliases: list[str]) -> bool:
-    h = header.lower().strip()
-    return any(alias in h for alias in aliases)
+def _map_stage(raw_stage: str) -> str:
+    """Map a Dodge ACTION STAGE(S) value (possibly compound) to a CC status."""
+    lower = raw_stage.lower()
+    for tokens, cc_status in _STAGE_PRIORITY:
+        if any(token in lower for token in tokens):
+            return cc_status
+    return _STAGE_DEFAULT
 
 
-def _detect_columns(headers: list[str]) -> dict[str, int]:
-    """Map internal field names to column indices in the sheet."""
-    col_idx: dict[str, int] = {}
-    for i, header in enumerate(headers):
-        for field, aliases in _COLUMN_MAP.items():
-            if field not in col_idx and _match_header(header, aliases):
-                col_idx[field] = i
-    return col_idx
+# ── Value helpers ──────────────────────────────────────────────────────────────
+_MAX_REASONABLE_VALUE = 1_000_000_000  # cap Dodge's "999999999999999" sentinel
 
 
-def _parse_value(raw) -> float:
-    """Parse a currency/numeric string to float."""
-    if raw is None:
+def _parse_value(raw: str) -> float:
+    if not raw or raw.strip().upper() in ("N/A", ""):
         return 0.0
-    if isinstance(raw, (int, float)):
-        return float(raw)
-    s = re.sub(r"[^\d.]", "", str(raw))
+    cleaned = re.sub(r"[^\d.]", "", raw)
     try:
-        return float(s)
+        v = float(cleaned)
+        return min(v, _MAX_REASONABLE_VALUE)
     except ValueError:
         return 0.0
+
+
+def _midpoint(low: float, high: float) -> float:
+    if high <= 0:
+        return low
+    if low <= 0:
+        return high
+    return (low + high) / 2
 
 
 def _value_range_label(value: float) -> str:
@@ -104,105 +86,167 @@ def _value_range_label(value: float) -> str:
     return "$100 Million +"
 
 
-def _normalize_status(raw_status: str) -> str:
-    key = (raw_status or "").lower().strip()
-    return _STATUS_MAP.get(key, raw_status or "Pre-Construction/Negotiated")
+# ── Date normalization ─────────────────────────────────────────────────────────
+def _normalize_date(raw: str) -> str:
+    """Convert MM/DD/YYYY → YYYY-MM-DD. Returns '' for N/A or blank."""
+    if not raw or raw.strip().upper() in ("N/A", ""):
+        return ""
+    raw = raw.split("@")[0].strip()  # strip time part if present
+    m = re.match(r"(\d{1,2})/(\d{1,2})/(\d{4})", raw)
+    if m:
+        return f"{m.group(3)}-{m.group(1).zfill(2)}-{m.group(2).zfill(2)}"
+    return raw
 
 
-def _row_to_project(row: tuple, col_idx: dict[str, int], row_num: int) -> dict | None:
-    """Convert a spreadsheet row to an internal project dict."""
-    def get(field):
-        idx = col_idx.get(field)
-        if idx is None:
-            return None
-        val = row[idx]
-        return str(val).strip() if val is not None else None
+# ── ID cleaning ────────────────────────────────────────────────────────────────
+def _clean_id(raw: str) -> str:
+    """Strip leading/trailing apostrophes that Dodge wraps around numbers."""
+    return raw.strip().strip("'")
 
-    title = get("title")
+
+# ── Field extraction ───────────────────────────────────────────────────────────
+_NA = {"n/a", "na", "", "none"}
+
+
+def _field(row: dict, key: str) -> str:
+    """Return field value, converting 'N/A' variants to empty string."""
+    val = (row.get(key) or "").strip()
+    return "" if val.lower() in _NA else val
+
+
+def _companies(row: dict) -> list[str]:
+    """Extract all named company roles from the row."""
+    roles = ["GC: Company Name", "Owner: Company Name", "Architect: Company Name",
+             "Construction Manager: Company Name"]
+    seen, result = set(), []
+    for role in roles:
+        name = _field(row, role)
+        if name and name not in seen:
+            seen.add(name)
+            result.append(name)
+    return result
+
+
+# ── Row → project dict ─────────────────────────────────────────────────────────
+def _row_to_project(row: dict) -> dict | None:
+    title = _field(row, "TITLE")
     if not title:
-        return None  # skip empty rows
+        return None
+    if _field(row, "REPORT TYPE").lower() == "item only":
+        return None  # bid items, not full projects
 
-    value = _parse_value(get("value"))
-    gc = get("gc") or ""
-    owner = get("owner") or ""
-    architect = get("architect") or ""
+    dodge_id = _clean_id(_field(row, "DODGE REPORT NUMBER") or "")
+    low_val  = _parse_value(_field(row, "LOW VALUE(S)"))
+    high_val = _parse_value(_field(row, "HIGH VALUE(S)"))
+    value    = _midpoint(low_val, high_val)
 
-    companies = [c for c in [gc, owner, architect] if c]
-
-    raw_status = get("status") or ""
-    cc_status = _normalize_status(raw_status)
-
-    dodge_id = get("dodge_id") or f"dodge_{row_num}"
+    cc_status  = _map_stage(_field(row, "ACTION STAGE(S)"))
+    city       = _field(row, "CITY").title()
+    state      = _field(row, "STATE")
+    zip_code   = _clean_id(_field(row, "ZIP CODE"))
+    bid_date   = _normalize_date(_field(row, "BID DATE"))
+    start_date = _normalize_date(_field(row, "TARGET START DATE"))
+    source_url = _field(row, "URL LINK TO PROJECT")
 
     return {
-        # Identifier — prefixed so it never collides with a CC projectId
-        "projectId":              f"dodge:{dodge_id}",
-        "source":                 "Dodge",
-        "title":                  title,
-        "projectDescription":     get("description") or "",
-        "projectStatus":          cc_status,
-        "projectValue":           value,
-        "projectValueRange":      _value_range_label(value),
-        "categories":             get("category") or "",
-        "subCategories":          get("sub_category") or "",
-        "buildingUsesString":     get("building_use") or "",
-        "constructionTypes":      "",
-        "trades":                 "",
+        # Use the same numeric ID as CC (same platform: apps.construction.com)
+        "projectId":          dodge_id,
+        "source":             "Dodge",
+        "title":              title,
+        "projectDescription": _field(row, "STATUS"),
+        "projectStatus":      cc_status,
+        "projectValue":       value,
+        "projectValueRange":  _value_range_label(value),
+        "categories":         _field(row, "PROJECT TYPE(S)"),
+        "subCategories":      _field(row, "TYPE OF CONSTRUCTION"),
+        "buildingUsesString": "",
+        "constructionTypes":  _field(row, "FRAMING TYPE"),
+        "trades":             "",
         "address": {
-            "city":  get("city") or "",
-            "state": get("state") or "",
-            "zip":   get("zip") or "",
+            "city":  city,
+            "state": state,
+            "zip":   zip_code,
         },
-        "bidDate":                get("bid_date") or "",
-        "startDate":              get("start_date") or "",
-        "contractingMethod":      get("contracting") or "",
+        "bidDate":                bid_date,
+        "startDate":              start_date,
+        "contractingMethod":      _field(row, "PROJECT DELIVERY SYSTEM"),
         "bidsToContactRoleGroup": "",
-        "companyNameList":        companies,
-        # Metadata for dedup
-        "_dodge_raw_status":      raw_status,
-        "_dodge_owner":           owner,
-        "_dodge_gc":              gc,
+        "companyNameList":        _companies(row),
+        # Source URL — same platform as CC, enables exact ID dedup
+        "_dodge_url":             source_url,
+        "_dodge_stage_raw":       _field(row, "ACTION STAGE(S)"),
+        "_dodge_value_low":       low_val,
+        "_dodge_value_high":      high_val,
     }
 
 
-class DodgeClient:
-    @staticmethod
-    def load_excel(path: str | Path, sheet_name: str | None = None) -> list[dict]:
-        """
-        Parse a Dodge Construct Excel export and return a list of project dicts
-        in the same format as ConstructConnectClient.fetch_all().
-
-        Args:
-            path: Path to the .xlsx file.
-            sheet_name: Specific sheet to read. Defaults to the first sheet.
-
-        Returns:
-            List of project dicts. Rows with empty titles are skipped.
-        """
-        wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
-        ws = wb[sheet_name] if sheet_name else wb.active
-
-        rows = list(ws.iter_rows(values_only=True))
-        if not rows:
-            return []
-
-        # First non-empty row is the header
-        headers = [str(h).strip() if h is not None else "" for h in rows[0]]
-        col_idx = _detect_columns(headers)
-
-        if not col_idx:
-            raise ValueError(
-                f"Could not detect any known columns in '{path}'. "
-                f"Found headers: {headers[:10]}"
-            )
-
-        projects = []
-        for row_num, row in enumerate(rows[1:], start=2):
-            project = _row_to_project(row, col_idx, row_num)
+# ── CSV loader ─────────────────────────────────────────────────────────────────
+def _load_csv(path: Path) -> list[dict]:
+    projects = []
+    with open(path, newline="", encoding="utf-8-sig") as f:
+        reader = csv.DictReader(f)
+        for i, row in enumerate(reader, start=2):
+            project = _row_to_project(row)
             if project:
                 projects.append(project)
+    return projects
 
-        wb.close()
-        print(f"[dodge] Loaded {len(projects)} projects from '{path}' "
-              f"(detected columns: {sorted(col_idx.keys())})")
+
+# ── Excel loader ───────────────────────────────────────────────────────────────
+def _load_excel(path: Path) -> list[dict]:
+    try:
+        import openpyxl
+    except ImportError:
+        raise ImportError("openpyxl is required for Excel import: pip install openpyxl")
+
+    wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+    wb.close()
+    if not rows:
+        return []
+
+    headers = [str(h).strip() if h is not None else "" for h in rows[0]]
+    projects = []
+    for i, row_vals in enumerate(rows[1:], start=2):
+        row = dict(zip(headers, [str(v).strip() if v is not None else "" for v in row_vals]))
+        project = _row_to_project(row)
+        if project:
+            projects.append(project)
+    return projects
+
+
+# ── Public API ─────────────────────────────────────────────────────────────────
+class DodgeClient:
+    @staticmethod
+    def load(path: str | Path) -> list[dict]:
+        """
+        Load a Dodge Construct export (.csv or .xlsx) and return project dicts
+        in the same internal format as ConstructConnectClient.fetch_all().
+
+        Both CC and Dodge use apps.construction.com project IDs, so the returned
+        projectId values can be directly matched against CC data for dedup.
+        """
+        path = Path(path)
+        if not path.exists():
+            raise FileNotFoundError(f"Dodge export not found: {path}")
+
+        suffix = path.suffix.lower()
+        if suffix == ".csv":
+            projects = _load_csv(path)
+        elif suffix in (".xlsx", ".xls"):
+            projects = _load_excel(path)
+        else:
+            raise ValueError(f"Unsupported file type '{suffix}'. Use .csv or .xlsx")
+
+        # Summary of what we loaded
+        by_status: dict[str, int] = {}
+        for p in projects:
+            s = p["projectStatus"]
+            by_status[s] = by_status.get(s, 0) + 1
+
+        print(f"[dodge] Loaded {len(projects)} projects from '{path.name}'")
+        for status, count in sorted(by_status.items(), key=lambda x: -x[1]):
+            print(f"         {count:4d}  {status}")
+
         return projects

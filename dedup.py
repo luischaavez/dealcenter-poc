@@ -1,18 +1,12 @@
 """
 Cross-source deduplication for ConstructConnect + Dodge Construct projects.
 
-A project on CC and the same project on Dodge will have different IDs and
-slightly different names, so we can't do exact matching. Instead we build a
-multi-signal fingerprint and group projects that are likely the same.
+Both CC and Dodge use apps.construction.com as their underlying platform,
+so their project IDs are identical. Dedup strategy:
 
-Fingerprint signals (all normalized):
-  1. City + State  (exact match required)
-  2. Value bucket  (within one bucket step)
-  3. Title tokens  (Jaccard similarity >= threshold)
-  4. Bid-month     (same month, if both have one)
-
-Two projects are considered duplicates when they share city/state AND at least
-two of the other three signals match.
+  Pass 1 — Exact ID match (definitive, zero false positives)
+  Pass 2 — Fuzzy fingerprint for projects only in one source
+            (city/state + title Jaccard + value bucket + bid-month)
 
 Public API:
     deduplicate(cc_projects, dodge_projects)
@@ -151,6 +145,23 @@ def _find_groups(projects: list[dict]) -> list[list[int]]:
     return list(groups.values())
 
 
+# ── Annotation helpers ─────────────────────────────────────────────────────────
+def _annotate_match(cc_project: dict, dodge_project: dict, match_type: str) -> None:
+    """Mark a CC project as confirmed by Dodge."""
+    cc_project["source"]                    = "CC+Dodge"
+    cc_project["_dedup_confirmed"]          = True
+    cc_project["_dedup_match_type"]         = match_type  # "exact_id" | "fuzzy"
+    cc_project["_dedup_confidence_bonus"]   = 10
+    cc_project["_dodge_stage_raw"]          = dodge_project.get("_dodge_stage_raw", "")
+    cc_project["_dodge_value_low"]          = dodge_project.get("_dodge_value_low", 0)
+    cc_project["_dodge_value_high"]         = dodge_project.get("_dodge_value_high", 0)
+    # Enrich companies list with any names Dodge has that CC doesn't
+    cc_companies = set(cc_project.get("companyNameList") or [])
+    for name in (dodge_project.get("companyNameList") or []):
+        if name and name not in cc_companies:
+            (cc_project["companyNameList"] or []).append(name)
+
+
 # ── Public API ─────────────────────────────────────────────────────────────────
 def deduplicate(
     cc_projects: list[dict],
@@ -159,16 +170,18 @@ def deduplicate(
     """
     Merge CC and Dodge projects, deduplicate cross-source matches.
 
-    For each matched pair:
-      - The CC project is kept as the representative (more structured data)
-      - It's annotated with `_dedup_confirmed=True` and `_dodge_id`
-      - The Dodge duplicate is dropped from the output
-      - Confidence boost (+10) is applied via `_dedup_confidence_bonus`
+    Pass 1 (exact ID): Since both sources use apps.construction.com, project IDs
+    are identical. Exact matches are definitive with zero false positives.
 
-    Unmatched Dodge projects are included as-is.
+    Pass 2 (fuzzy): For projects only in one source, fall back to multi-signal
+    fingerprint matching (city/state + title Jaccard + value bucket + bid-month).
 
-    Returns:
-        Merged list with dedup annotations. Order: CC first, then unmatched Dodge.
+    For each match:
+      - CC project is kept as representative (more structured data)
+      - Annotated with _dedup_confirmed, _dedup_match_type, _dedup_confidence_bonus=10
+      - Dodge company names not already in CC are merged in
+
+    Unmatched Dodge projects are appended at the end.
     """
     if not dodge_projects:
         for p in cc_projects:
@@ -180,58 +193,45 @@ def deduplicate(
     for p in dodge_projects:
         p.setdefault("source", "Dodge")
 
-    all_projects = cc_projects + dodge_projects
-    groups = _find_groups(all_projects)
+    # Index CC projects by ID for O(1) lookup
+    cc_by_id: dict[str, dict] = {
+        p["projectId"]: p for p in cc_projects if p.get("projectId")
+    }
+    dodge_matched: set[str] = set()
+    exact_matches = 0
 
-    result = []
-    dodge_matched_ids: set[str] = set()
+    # ── Pass 1: Exact ID match ─────────────────────────────────────────
+    for dp in dodge_projects:
+        did = dp.get("projectId", "")
+        if did and did in cc_by_id:
+            _annotate_match(cc_by_id[did], dp, "exact_id")
+            dodge_matched.add(did)
+            exact_matches += 1
 
-    cc_count = len(cc_projects)
+    # ── Pass 2: Fuzzy match for remaining Dodge projects ───────────────
+    unmatched_cc = [p for p in cc_projects if not p.get("_dedup_confirmed")]
+    unmatched_dodge = [p for p in dodge_projects if p.get("projectId") not in dodge_matched]
+    fuzzy_matches = 0
 
-    for group in groups:
-        if len(group) == 1:
-            continue  # singleton — handle below
+    for dp in unmatched_dodge:
+        for cp in unmatched_cc:
+            if _are_duplicates(cp, dp):
+                _annotate_match(cp, dp, "fuzzy")
+                unmatched_cc.remove(cp)
+                dodge_matched.add(dp.get("projectId", ""))
+                fuzzy_matches += 1
+                break
 
-        cc_indices  = [i for i in group if i < cc_count]
-        dodge_indices = [i for i in group if i >= cc_count]
+    # ── Build result ───────────────────────────────────────────────────
+    dodge_only = [p for p in dodge_projects if p.get("projectId") not in dodge_matched]
+    result = cc_projects + dodge_only
 
-        if cc_indices and dodge_indices:
-            # Cross-source match: keep CC representative, annotate it
-            representative = all_projects[cc_indices[0]]
-            dodge_ids = [
-                all_projects[i].get("projectId", "") for i in dodge_indices
-            ]
-            representative["_dedup_confirmed"] = True
-            representative["_dedup_dodge_ids"] = dodge_ids
-            representative["_dedup_confidence_bonus"] = 10
-            representative["source"] = "CC+Dodge"
-            result.append(representative)
-            for i in dodge_indices:
-                dodge_matched_ids.add(all_projects[i].get("projectId", ""))
-        else:
-            # Same-source group (shouldn't happen, but handle gracefully)
-            result.extend(all_projects[i] for i in group)
-
-    # Add singletons
-    for i, p in enumerate(all_projects):
-        pid = p.get("projectId", "")
-        if i < cc_count:
-            # CC singleton — include if not already in result
-            if not p.get("_dedup_confirmed"):
-                result.append(p)
-        else:
-            # Dodge singleton — include only if not matched to a CC project
-            if pid not in dodge_matched_ids:
-                result.append(p)
-
-    cc_final   = sum(1 for p in result if "CC" in p.get("source", ""))
-    dodge_only = sum(1 for p in result if p.get("source") == "Dodge")
-    matched    = sum(1 for p in result if p.get("source") == "CC+Dodge")
-
+    matched_total = exact_matches + fuzzy_matches
     print(
         f"[dedup] {len(cc_projects)} CC + {len(dodge_projects)} Dodge → "
         f"{len(result)} merged  "
-        f"({matched} cross-source matches, {dodge_only} Dodge-only)"
+        f"({exact_matches} exact-ID + {fuzzy_matches} fuzzy matches, "
+        f"{len(dodge_only)} Dodge-only added)"
     )
 
     return result

@@ -67,7 +67,7 @@ def run_pipeline(dry_run: bool = False, limit: int = None, dodge_path: str = Non
     if effective_dodge_path:
         print(f"STAGE 1b  Importing Dodge Excel: {effective_dodge_path}...")
         try:
-            dodge_projects = DodgeClient.load_excel(effective_dodge_path)
+            dodge_projects = DodgeClient.load(effective_dodge_path)
             print(f"  Imported: {len(dodge_projects):,} Dodge projects\n")
         except Exception as exc:
             print(f"  WARNING: Dodge import failed — {exc}\n")
