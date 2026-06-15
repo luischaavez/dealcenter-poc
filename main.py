@@ -20,7 +20,10 @@ Pipeline stages:
 import argparse
 from datetime import datetime
 
-from config import SEARCH_STATES, SEARCH_DAYS_BACK, MAX_LEADS_PER_RUN, OUTPUT_DIR
+from config import (
+    SEARCH_STATES, SEARCH_DAYS_BACK, MAX_LEADS_PER_RUN, OUTPUT_DIR,
+    CONFIDENCE_QUEUE_THRESHOLD, ACTIONABILITY_QUEUE_THRESHOLD,
+)
 from client import ConstructConnectClient
 from filters import apply_hard_filters
 from qualifier import qualify_project
@@ -182,13 +185,25 @@ def run_pipeline(dry_run: bool = False, limit: int = None) -> list:
     print("  Updating project ledger...")
     for r in results:
         if r.get("ai_result"):
+            ai   = r["ai_result"]
+            sr   = r.get("score_result", {})
+            conf = sr.get("confidence", 100.0)
+            act  = ai.get("actionability_score", 0)
+
+            # Qualified but low confidence or low actionability → pending queue
+            if ai.get("qualifies") and (conf < CONFIDENCE_QUEUE_THRESHOLD or act < ACTIONABILITY_QUEUE_THRESHOLD):
+                pending = "queue"
+            else:
+                pending = None
+
             update_project(
-                project      = r["project"],
-                ai_result    = r["ai_result"],
-                score_result = r.get("score_result", {}),
-                run_id       = run_id,
-                alert        = r.get("alert"),
-                alert_detail = r.get("alert_detail"),
+                project        = r["project"],
+                ai_result      = ai,
+                score_result   = sr,
+                run_id         = run_id,
+                alert          = r.get("alert"),
+                alert_detail   = r.get("alert_detail"),
+                pending_status = pending,
             )
     print()
 

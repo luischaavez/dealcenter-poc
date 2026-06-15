@@ -89,4 +89,37 @@ def score_project(project: dict, ai_result: dict) -> dict:
         "final_score": round(min(score, 100.0), 1),
         "score_factors": factors + (ai_result.get("actionability_factors") or []),
         "blockers": ai_result.get("actionability_blockers") or [],
+        "confidence": _compute_confidence(project, ai_result),
     }
+
+
+def _compute_confidence(project: dict, ai_result: dict) -> float:
+    """
+    Compute a 0-100 confidence score for the qualification decision.
+
+    Combines AI self-reported confidence with objective data completeness signals.
+    High confidence = we're certain this lead is correctly qualified.
+    Low confidence = borderline case; flag for human review.
+    """
+    # AI self-reported confidence (max 60 pts)
+    ai_conf = float(ai_result.get("qualification_confidence") or 0.7)
+    conf = ai_conf * 60
+
+    # GC identified → we know who to call (+20 pts)
+    companies = project.get("companyNameList") or []
+    if isinstance(companies, list) and len(companies) > 0:
+        conf += 20
+    elif isinstance(companies, str) and companies.strip():
+        conf += 20
+
+    # Known project value (+10 pts)
+    value = project.get("projectValue") or 0
+    value_range = project.get("projectValueRange") or ""
+    if value > 0 or (value_range and "Not Available" not in value_range):
+        conf += 10
+
+    # Has at least one date (bid or start) (+10 pts)
+    if project.get("bidDate") or project.get("startDate"):
+        conf += 10
+
+    return round(min(conf, 100.0), 1)

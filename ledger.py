@@ -103,6 +103,7 @@ def update_project(
     run_id: str,
     alert: Optional[str],
     alert_detail: Optional[str],
+    pending_status: Optional[str] = None,
 ) -> None:
     """
     Upsert a project into the ledger.
@@ -138,6 +139,8 @@ def update_project(
                 qualifies         = bool(ai_result.get("qualifies")),
                 alert             = alert,
                 alert_detail      = alert_detail,
+                confidence_score  = score_result.get("confidence"),
+                pending_status    = pending_status,
                 status_history    = json.dumps(status_history),
                 last_ai_result    = json.dumps(ai_result),
                 last_score_result = json.dumps(score_result),
@@ -164,6 +167,10 @@ def update_project(
             existing.qualifies         = bool(ai_result.get("qualifies"))
             existing.alert             = alert
             existing.alert_detail      = alert_detail
+            existing.confidence_score  = score_result.get("confidence")
+            # Only update pending_status if explicitly provided (don't overwrite human decisions)
+            if pending_status is not None:
+                existing.pending_status = pending_status
             existing.status_history    = json.dumps(history)
             existing.last_ai_result    = json.dumps(ai_result)
             existing.last_score_result = json.dumps(score_result)

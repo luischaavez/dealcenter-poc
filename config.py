@@ -93,3 +93,9 @@ SEARCH_DAYS_BACK = int(os.getenv("SEARCH_DAYS_BACK", "90"))
 # --- Output ---
 OUTPUT_DIR = "output"
 MAX_LEADS_PER_RUN = int(os.getenv("MAX_LEADS_PER_RUN", "20"))
+
+# --- Pending Queue Thresholds ---
+# Qualified projects below either threshold go to the pending queue for human review
+# instead of the main recommendations list.
+CONFIDENCE_QUEUE_THRESHOLD    = int(os.getenv("CONFIDENCE_QUEUE_THRESHOLD", "60"))
+ACTIONABILITY_QUEUE_THRESHOLD = int(os.getenv("ACTIONABILITY_QUEUE_THRESHOLD", "50"))
