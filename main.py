@@ -2,26 +2,31 @@
 DealCenter Pipeline — PoC entry point.
 
 Usage:
-  python main.py                      # Full run (ingest → filter → qualify → rank → output)
-  python main.py --dry-run            # Skip AI; just show what passes hard filters
-  python main.py --limit 50           # Cap at 50 ingested projects (for testing)
-  python main.py --limit 50 --dry-run # Fast test: 50 projects, no AI cost
+  python main.py                          # Full run
+  python main.py --dry-run                # Skip AI; show filtered projects
+  python main.py --limit 50              # Cap at 50 ingested projects
+  python main.py --dodge path/to/file.xlsx  # Include Dodge Excel import
 
 Pipeline stages:
-  1  Ingest        — fetch from ConstructConnect (pre-filtered at API level)
-  2  Hard Filter   — client-side safety nets
+  1a Ingest CC    — fetch from ConstructConnect
+  1b Ingest Dodge — parse Excel (if --dodge provided or DODGE_EXCEL_PATH set)
+  1.5 Dedup       — cross-source deduplication
+  2  Hard Filter  — client-side safety nets
   2.5 Memory Check — ledger lookup: new / cached / changed
-  3  AI Qualify    — Haiku on new+changed projects only
-  4  Score & Rank  — composite 0-100 score
-  4.5 Summaries   — Sonnet sales briefs for top 20
-  5  Output        — JSON files + SQLite
+  3  AI Qualify   — Haiku on new+changed projects only
+  4  Score & Rank — composite 0-100 score
+  4.5 Summaries  — Sonnet sales briefs for top 20
+  5  Output       — JSON files + SQLite
 """
 
 import argparse
+import os
 from datetime import datetime
 
 from config import SEARCH_STATES, SEARCH_DAYS_BACK, MAX_LEADS_PER_RUN, OUTPUT_DIR
 from client import ConstructConnectClient
+from dodge_client import DodgeClient
+from dedup import deduplicate
 from filters import apply_hard_filters
 from qualifier import qualify_project
 from scorer import score_project
@@ -30,7 +35,7 @@ from summarizer import generate_summary
 from ledger import check_project, update_project, save_run, save_leads
 
 
-def run_pipeline(dry_run: bool = False, limit: int = None) -> list:
+def run_pipeline(dry_run: bool = False, limit: int = None, dodge_path: str = None) -> list:
     print(f"\n{'═' * 65}")
     print("  DEALCENTER PIPELINE")
     print(f"  States: {', '.join(SEARCH_STATES)}  |  Last {SEARCH_DAYS_BACK} days")
@@ -38,21 +43,46 @@ def run_pipeline(dry_run: bool = False, limit: int = None) -> list:
         print("  Mode: DRY RUN (no AI qualification)")
     if limit:
         print(f"  Ingest cap: {limit} projects")
+    if dodge_path:
+        print(f"  Dodge Excel: {dodge_path}")
     print(f"{'═' * 65}\n")
 
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    # ── Stage 1: Ingest ────────────────────────────────────────────────
-    print("STAGE 1  Ingesting from ConstructConnect...")
+    # ── Stage 1a: Ingest from ConstructConnect ─────────────────────────
+    print("STAGE 1a  Ingesting from ConstructConnect...")
     cc = ConstructConnectClient()
-    all_projects = list(
+    cc_projects = list(
         cc.fetch_all(
             states=SEARCH_STATES,
             days_back=SEARCH_DAYS_BACK,
             max_projects=limit,
         )
     )
-    print(f"  Ingested: {len(all_projects):,} projects\n")
+    print(f"  Ingested: {len(cc_projects):,} CC projects\n")
+
+    # ── Stage 1b: Ingest from Dodge Excel (optional) ───────────────────
+    dodge_projects = []
+    effective_dodge_path = dodge_path or os.environ.get("DODGE_EXCEL_PATH")
+    if effective_dodge_path:
+        print(f"STAGE 1b  Importing Dodge Excel: {effective_dodge_path}...")
+        try:
+            dodge_projects = DodgeClient.load_excel(effective_dodge_path)
+            print(f"  Imported: {len(dodge_projects):,} Dodge projects\n")
+        except Exception as exc:
+            print(f"  WARNING: Dodge import failed — {exc}\n")
+    else:
+        print("STAGE 1b  Dodge import skipped (no --dodge path or DODGE_EXCEL_PATH)\n")
+
+    # ── Stage 1.5: Cross-source deduplication ─────────────────────────
+    if dodge_projects:
+        print("STAGE 1.5  Cross-source deduplication...")
+        all_projects = deduplicate(cc_projects, dodge_projects)
+        print()
+    else:
+        all_projects = cc_projects
+
+    print(f"  Total after dedup: {len(all_projects):,} projects\n")
 
     # ── Stage 2: Hard Filter ───────────────────────────────────────────
     print("STAGE 2  Applying hard filters...")
@@ -263,5 +293,12 @@ if __name__ == "__main__":
         metavar="N",
         help="Limit number of projects ingested (useful for testing)",
     )
+    parser.add_argument(
+        "--dodge",
+        type=str,
+        default=None,
+        metavar="PATH",
+        help="Path to a Dodge Construct Excel export (.xlsx) to merge with CC data",
+    )
     args = parser.parse_args()
-    run_pipeline(dry_run=args.dry_run, limit=args.limit)
+    run_pipeline(dry_run=args.dry_run, limit=args.limit, dodge_path=args.dodge)
