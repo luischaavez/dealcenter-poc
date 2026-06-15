@@ -1,18 +1,17 @@
 """
-AI qualification agent using Claude.
+AI qualification agent — delegates to the model gateway.
 
-The system prompt is cached via Anthropic's prompt caching API —
-it is sent once and reused across all project evaluations in a run,
-dramatically reducing cost when processing batches of 50-200 projects.
+The gateway tries Anthropic direct first (with prompt caching), then
+OpenRouter, then Ollama local. The provider used is stored in the
+result as "_gateway_provider" so scorer.py can apply penalties when
+a lower-fidelity tier was used.
 """
 
 import json
-import anthropic
-from config import ANTHROPIC_API_KEY, QUALIFIER_MODEL
+from model_gateway import call_with_cascade
 
-_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-
-# This prompt is sent with cache_control so it's only billed once per batch.
+# This prompt is sent with cache_control on the Anthropic tier so it's
+# only billed once per batch — the gateway handles that detail.
 _SYSTEM_PROMPT = """You are a lead qualification analyst for FullTilt Dumpster Services (FTDS), a commercial waste and sanitation company in Utah.
 
 FTDS SERVICES:
@@ -193,10 +192,12 @@ def _build_project_summary(project: dict) -> str:
 
 def qualify_project(project: dict) -> dict:
     """
-    Run AI qualification on a single project.
+    Run AI qualification on a single project via the model gateway cascade.
 
-    Uses prompt caching on the system prompt — the first call in a session
-    writes the cache; subsequent calls read it at ~10% of the token cost.
+    On Anthropic: prompt caching keeps batch cost low (first call writes cache,
+    subsequent calls read at ~10% of the token cost).
+    On fallback tiers: "_gateway_provider" in the result lets scorer.py apply
+    a confidence penalty appropriate to the tier used.
     """
     user_content = (
         f"Analyze this construction project for FullTilt Dumpster Services:\n\n"
@@ -204,26 +205,6 @@ def qualify_project(project: dict) -> dict:
         f"Respond with JSON matching this schema exactly:\n{_RESPONSE_SCHEMA}"
     )
 
-    response = _client.messages.create(
-        model=QUALIFIER_MODEL,
-        max_tokens=1024,
-        system=[
-            {
-                "type": "text",
-                "text": _SYSTEM_PROMPT,
-                "cache_control": {"type": "ephemeral"},  # Cache the system prompt across calls
-            }
-        ],
-        messages=[{"role": "user", "content": user_content}],
-    )
-
-    raw = response.content[0].text.strip()
-
-    # Handle cases where the model wraps JSON in markdown fences
-    if raw.startswith("```"):
-        raw = raw.split("```")[1]
-        if raw.startswith("json"):
-            raw = raw[4:]
-        raw = raw.strip()
-
-    return json.loads(raw)
+    result, provider = call_with_cascade(_SYSTEM_PROMPT, user_content)
+    result["_gateway_provider"] = provider
+    return result
