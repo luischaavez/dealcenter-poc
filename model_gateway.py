@@ -23,7 +23,7 @@ from config import (
     ANTHROPIC_API_KEY,
     QUALIFIER_MODEL,
     OPENROUTER_API_KEY,
-    OPENROUTER_MODEL,
+    OPENROUTER_MODELS,
     # OLLAMA_BASE_URL,  # uncomment with Ollama tier below
     # OLLAMA_MODEL,
 )
@@ -64,7 +64,8 @@ def _call_openrouter(system_prompt: str, user_content: str) -> dict:
             "X-Title": "DealCenter",
         },
         json={
-            "model": OPENROUTER_MODEL,
+            "models": OPENROUTER_MODELS,
+            "route":  "fallback",
             "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_content},

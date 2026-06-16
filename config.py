@@ -89,7 +89,12 @@ SUMMARY_MODEL = "claude-sonnet-4-5"
 # --- Model Gateway ---
 # Tier 2: OpenRouter (commercial models, OpenAI-compatible API)
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-OPENROUTER_MODEL   = os.getenv("OPENROUTER_MODEL", "google/gemini-2.0-flash-001")
+# Comma-separated list of models in fallback order. OR tries each in sequence
+# if the previous one is unavailable, rate-limited, or errors out.
+OPENROUTER_MODELS = os.getenv(
+    "OPENROUTER_MODELS",
+    "google/gemini-2.0-flash-001,anthropic/claude-haiku-4-5,meta-llama/llama-3.3-70b-instruct",
+).split(",")
 # Tier 3: Ollama (local inference, always available)
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL    = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
