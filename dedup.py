@@ -1,12 +1,14 @@
 """
 Cross-source deduplication for ConstructConnect + Dodge Construct projects.
 
-Both CC and Dodge use apps.construction.com as their underlying platform,
-so their project IDs are identical. Dedup strategy:
+CC and Dodge use different ID namespaces (CC: 7-digit integers, Dodge: 12-digit
+report numbers like 202500231141), so exact ID matching is not possible.
 
-  Pass 1 — Exact ID match (definitive, zero false positives)
-  Pass 2 — Fuzzy fingerprint for projects only in one source
-            (city/state + title Jaccard + value bucket + bid-month)
+Dedup strategy — fuzzy fingerprint:
+    Same city/state  AND  at least 2 of 3 secondary signals:
+      - Title token Jaccard similarity ≥ 0.35
+      - Project value in same or adjacent bucket
+      - Bid month agreement
 
 Public API:
     deduplicate(cc_projects, dodge_projects)
@@ -168,18 +170,15 @@ def deduplicate(
     dodge_projects: list[dict],
 ) -> list[dict]:
     """
-    Merge CC and Dodge projects, deduplicate cross-source matches.
+    Merge CC and Dodge projects, deduplicate cross-source matches via fuzzy fingerprint.
 
-    Pass 1 (exact ID): Since both sources use apps.construction.com, project IDs
-    are identical. Exact matches are definitive with zero false positives.
-
-    Pass 2 (fuzzy): For projects only in one source, fall back to multi-signal
-    fingerprint matching (city/state + title Jaccard + value bucket + bid-month).
+    CC and Dodge have different ID formats and cannot be matched by ID.
+    Matching uses: same city/state + ≥2 of (title similarity, value bucket, bid month).
 
     For each match:
       - CC project is kept as representative (more structured data)
       - Annotated with _dedup_confirmed, _dedup_match_type, _dedup_confidence_bonus=10
-      - Dodge company names not already in CC are merged in
+      - Dodge company names not in CC are merged in
 
     Unmatched Dodge projects are appended at the end.
     """
@@ -193,27 +192,12 @@ def deduplicate(
     for p in dodge_projects:
         p.setdefault("source", "Dodge")
 
-    # Index CC projects by ID for O(1) lookup
-    cc_by_id: dict[str, dict] = {
-        p["projectId"]: p for p in cc_projects if p.get("projectId")
-    }
+    # Fuzzy match: compare every unmatched Dodge project against every CC project
     dodge_matched: set[str] = set()
-    exact_matches = 0
-
-    # ── Pass 1: Exact ID match ─────────────────────────────────────────
-    for dp in dodge_projects:
-        did = dp.get("projectId", "")
-        if did and did in cc_by_id:
-            _annotate_match(cc_by_id[did], dp, "exact_id")
-            dodge_matched.add(did)
-            exact_matches += 1
-
-    # ── Pass 2: Fuzzy match for remaining Dodge projects ───────────────
-    unmatched_cc = [p for p in cc_projects if not p.get("_dedup_confirmed")]
-    unmatched_dodge = [p for p in dodge_projects if p.get("projectId") not in dodge_matched]
     fuzzy_matches = 0
+    unmatched_cc  = list(cc_projects)
 
-    for dp in unmatched_dodge:
+    for dp in dodge_projects:
         for cp in unmatched_cc:
             if _are_duplicates(cp, dp):
                 _annotate_match(cp, dp, "fuzzy")
@@ -222,16 +206,13 @@ def deduplicate(
                 fuzzy_matches += 1
                 break
 
-    # ── Build result ───────────────────────────────────────────────────
     dodge_only = [p for p in dodge_projects if p.get("projectId") not in dodge_matched]
     result = cc_projects + dodge_only
 
-    matched_total = exact_matches + fuzzy_matches
     print(
         f"[dedup] {len(cc_projects)} CC + {len(dodge_projects)} Dodge → "
         f"{len(result)} merged  "
-        f"({exact_matches} exact-ID + {fuzzy_matches} fuzzy matches, "
-        f"{len(dodge_only)} Dodge-only added)"
+        f"({fuzzy_matches} fuzzy matches, {len(dodge_only)} Dodge-only added)"
     )
 
     return result

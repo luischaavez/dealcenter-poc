@@ -1,10 +1,6 @@
 """
 Dodge Construct data importer — supports CSV exports from apps.construction.com.
 
-Dodge and ConstructConnect share the same underlying platform (apps.construction.com),
-so project IDs are identical across both sources. Dedup can use exact ID matching
-as a first pass before falling back to fuzzy matching.
-
 Usage:
     from dodge_client import DodgeClient
     projects = DodgeClient.load("path/to/export.csv")   # CSV
@@ -149,7 +145,6 @@ def _row_to_project(row: dict) -> dict | None:
     source_url = _field(row, "URL LINK TO PROJECT")
 
     return {
-        # Use the same numeric ID as CC (same platform: apps.construction.com)
         "projectId":          dodge_id,
         "source":             "Dodge",
         "title":              title,
@@ -172,7 +167,6 @@ def _row_to_project(row: dict) -> dict | None:
         "contractingMethod":      _field(row, "PROJECT DELIVERY SYSTEM"),
         "bidsToContactRoleGroup": "",
         "companyNameList":        _companies(row),
-        # Source URL — same platform as CC, enables exact ID dedup
         "_dodge_url":             source_url,
         "_dodge_stage_raw":       _field(row, "ACTION STAGE(S)"),
         "_dodge_value_low":       low_val,
@@ -224,8 +218,8 @@ class DodgeClient:
         Load a Dodge Construct export (.csv or .xlsx) and return project dicts
         in the same internal format as ConstructConnectClient.fetch_all().
 
-        Both CC and Dodge use apps.construction.com project IDs, so the returned
-        projectId values can be directly matched against CC data for dedup.
+        Dodge IDs (12-digit REPORT NUMBERs) and CC IDs (7-digit integers) are
+        incompatible namespaces — cross-source dedup uses fuzzy matching only.
         """
         path = Path(path)
         if not path.exists():
