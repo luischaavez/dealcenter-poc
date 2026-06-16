@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "factors": [
+    {
+      "id": "gc_awarded",
+      "label": "GC Awarded",
+      "weight": 25,
+      "description": "Project owner has selected and awarded a General Contractor",
+      "requires_crm": false
+    },
+    {
+      "id": "existing_customer_awarded",
+      "label": "Existing Customer Awarded",
+      "weight": 25,
+      "description": "The awarded GC is an existing FTDS customer",
+      "requires_crm": true
+    },
+    {
+      "id": "existing_customer_bidding",
+      "label": "Existing Customer Bidding",
+      "weight": 15,
+      "description": "An existing FTDS customer is bidding on this project",
+      "requires_crm": true
+    },
+    {
+      "id": "known_contact",
+      "label": "Known Contact Involved",
+      "weight": 15,
+      "description": "A known FTDS contact (PM, estimator, superintendent) is on the project",
+      "requires_crm": true
+    },
+    {
+      "id": "budget_pricing_requested",
+      "label": "Budget Pricing Requested",
+      "weight": 20,
+      "description": "Project is in a negotiated or design-build phase with early vendor pricing requested",
+      "requires_crm": false
+    },
+    {
+      "id": "construction_start_approaching",
+      "label": "Construction Starts Within 60 Days",
+      "weight": 15,
+      "description": "Construction start date is within 60 days — urgency to secure the vendor relationship",
+      "requires_crm": false
+    },
+    {
+      "id": "high_value",
+      "label": "Project Value > $50M",
+      "weight": 10,
+      "description": "Large-scale project requiring a significant equipment fleet over an extended duration",
+      "requires_crm": false
+    },
+    {
+      "id": "recently_updated",
+      "label": "Project Updated Last Week",
+      "weight": 9,
+      "description": "Project data was updated within the last 7 days, indicating active progress",
+      "requires_crm": false
+    }
+  ]
+}

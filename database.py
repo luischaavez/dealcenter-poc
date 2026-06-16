@@ -53,6 +53,9 @@ class Project(Base):
     alert             = Column(String)          # "new" | "status_changed" | "updated" | null
     alert_detail      = Column(String)          # e.g. "GC Bidding → Award"
 
+    # AI qualification confidence (0-100 scale of AI's self-reported certainty)
+    confidence_score  = Column(Float)
+
     # JSON columns (stored as text, SQLite has no native JSON type)
     status_history    = Column(Text)            # [{date, from, to}, ...]
     last_ai_result    = Column(Text)            # cached qualification JSON
@@ -110,13 +113,18 @@ class Lead(Base):
 # ── Create all tables (idempotent — safe to call on every startup) ────────────
 Base.metadata.create_all(ENGINE)
 
-# ── Startup migration: add project_snapshot if it doesn't exist yet ──────────
+# ── Startup migrations (safe no-op if column already exists) ─────────────────
+_MIGRATIONS = [
+    "ALTER TABLE leads    ADD COLUMN project_snapshot TEXT",
+    "ALTER TABLE projects ADD COLUMN confidence_score REAL",
+]
 with ENGINE.connect() as _conn:
-    try:
-        _conn.execute(text("ALTER TABLE leads ADD COLUMN project_snapshot TEXT"))
-        _conn.commit()
-    except Exception:
-        pass  # column already exists — no-op
+    for _sql in _MIGRATIONS:
+        try:
+            _conn.execute(text(_sql))
+            _conn.commit()
+        except Exception:
+            pass
 
 
 def get_db() -> Session:
