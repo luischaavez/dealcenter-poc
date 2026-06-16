@@ -89,13 +89,12 @@ def _build_run_payload(run: Run, leads: list) -> dict:
 
 # ── Pipeline thread ───────────────────────────────────────────────────────────
 
-def _run_pipeline_task() -> None:
+def _run_pipeline_task(dodge_path: str | None = None) -> None:
     """Entry point for the background pipeline thread."""
-    # Import here to avoid circular import at module load time
     from main import run_pipeline  # noqa: PLC0415
 
     try:
-        run_pipeline()
+        run_pipeline(dodge_path=dodge_path)
         with _pipeline_lock:
             _pipeline["status"] = "idle"
             _pipeline["error"]  = None
@@ -237,7 +236,13 @@ def pipeline_status():
 
 
 @app.post("/pipeline/run")
-def trigger_pipeline():
+def trigger_pipeline(dodge_path: str | None = None):
+    """
+    Trigger a pipeline run.
+
+    Query param `dodge_path` (optional): server-side path to a Dodge Excel file.
+    Example: POST /pipeline/run?dodge_path=/data/dodge_export.xlsx
+    """
     with _pipeline_lock:
         if _pipeline["status"] == "running":
             return {
@@ -249,6 +254,10 @@ def trigger_pipeline():
         _pipeline["started_at"] = datetime.utcnow().isoformat()
         _pipeline["error"]      = None
 
-    thread = threading.Thread(target=_run_pipeline_task, daemon=True)
+    thread = threading.Thread(
+        target=_run_pipeline_task,
+        kwargs={"dodge_path": dodge_path},
+        daemon=True,
+    )
     thread.start()
-    return {"accepted": True, "message": "Pipeline started"}
+    return {"accepted": True, "message": "Pipeline started", "dodge_path": dodge_path}
