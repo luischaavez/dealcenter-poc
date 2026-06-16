@@ -11,8 +11,6 @@ Endpoints
   GET  /leads/{project_id}    → most recent Lead row for the given project
   GET  /pipeline/status       → current pipeline state
   POST /pipeline/run          → trigger a pipeline run (non-blocking)
-  GET  /queue                 → projects pending human review
-  PATCH /queue/{project_id}   → update pending status (queue→routed→contacted)
 """
 
 import json
@@ -26,7 +24,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import desc
 
-from database import get_db, Run, Lead, Project
+from database import get_db, Run, Lead
 from formatter import to_web_lead
 
 # Path to the pre-generated JSON file (written by formatter.save_web_output)
@@ -254,51 +252,3 @@ def trigger_pipeline():
     thread = threading.Thread(target=_run_pipeline_task, daemon=True)
     thread.start()
     return {"accepted": True, "message": "Pipeline started"}
-
-
-# ── Queue endpoints ───────────────────────────────────────────────────────────
-
-_VALID_QUEUE_STATUSES = {"queue", "routed", "contacted", "dismissed"}
-
-
-@app.get("/queue")
-def get_queue():
-    """Projects pending human review (low confidence or borderline actionability)."""
-    with get_db() as session:
-        projects = (
-            session.query(Project)
-            .filter(Project.pending_status.isnot(None))
-            .filter(Project.pending_status != "dismissed")
-            .order_by(Project.last_score.desc())
-            .all()
-        )
-        return [
-            {
-                "project_id":      p.project_id,
-                "title":           p.title,
-                "last_status":     p.last_status,
-                "last_score":      p.last_score,
-                "confidence_score": p.confidence_score,
-                "pending_status":  p.pending_status,
-                "alert":           p.alert,
-                "last_seen":       p.last_seen.isoformat() if p.last_seen else None,
-            }
-            for p in projects
-        ]
-
-
-@app.patch("/queue/{project_id}")
-def update_queue_status(project_id: str, status: str):
-    """Advance a queued project through the review workflow."""
-    if status not in _VALID_QUEUE_STATUSES:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Invalid status '{status}'. Valid: {sorted(_VALID_QUEUE_STATUSES)}",
-        )
-    with get_db() as session:
-        project = session.get(Project, project_id)
-        if project is None:
-            raise HTTPException(status_code=404, detail=f"Project '{project_id}' not found")
-        project.pending_status = status
-        session.commit()
-        return {"project_id": project_id, "pending_status": status}

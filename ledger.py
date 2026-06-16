@@ -103,7 +103,6 @@ def update_project(
     run_id: str,
     alert: Optional[str],
     alert_detail: Optional[str],
-    pending_status: Optional[str] = None,
 ) -> None:
     """
     Upsert a project into the ledger.
@@ -127,6 +126,9 @@ def update_project(
                     "status": new_status,
                 })
 
+            # confidence_score: store AI's self-reported qualification certainty (0-100 scale)
+            ai_conf = round(float(ai_result.get("qualification_confidence") or 0.5) * 100, 1)
+
             session.add(Project(
                 project_id        = pid,
                 title             = project.get("title", ""),
@@ -139,8 +141,7 @@ def update_project(
                 qualifies         = bool(ai_result.get("qualifies")),
                 alert             = alert,
                 alert_detail      = alert_detail,
-                confidence_score  = score_result.get("confidence"),
-                pending_status    = pending_status,
+                confidence_score  = ai_conf,
                 status_history    = json.dumps(status_history),
                 last_ai_result    = json.dumps(ai_result),
                 last_score_result = json.dumps(score_result),
@@ -158,6 +159,8 @@ def update_project(
                     "to":   new_status,
                 })
 
+            ai_conf = round(float(ai_result.get("qualification_confidence") or 0.5) * 100, 1)
+
             existing.title             = project.get("title", existing.title)
             existing.last_seen         = now
             existing.last_run_id       = run_id
@@ -167,10 +170,7 @@ def update_project(
             existing.qualifies         = bool(ai_result.get("qualifies"))
             existing.alert             = alert
             existing.alert_detail      = alert_detail
-            existing.confidence_score  = score_result.get("confidence")
-            # Only update pending_status if explicitly provided (don't overwrite human decisions)
-            if pending_status is not None:
-                existing.pending_status = pending_status
+            existing.confidence_score  = ai_conf
             existing.status_history    = json.dumps(history)
             existing.last_ai_result    = json.dumps(ai_result)
             existing.last_score_result = json.dumps(score_result)

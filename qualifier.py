@@ -131,6 +131,13 @@ Correct output (abbreviated):
 }
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+BUDGET PRICING REQUESTED: Set budget_pricing_requested=true when the contracting
+method is "Negotiated" or "Design-Build", or when the description indicates the
+GC is providing early budget estimates before full design completion (pre-con
+services, early vendor pricing, or cost-model requests). This is a positive signal
+— it means the GC is engaged early and will need vendors before formal bidding.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Always explain your reasoning. The explanation matters more than the score.
 
 Respond ONLY with valid JSON — no markdown, no prose outside the JSON object."""
@@ -142,6 +149,7 @@ _RESPONSE_SCHEMA = """{
   "actionability_score": 0-100,
   "actionability_factors": ["list of positive factors found"],
   "actionability_blockers": ["list of blockers, or empty list"],
+  "budget_pricing_requested": true | false  (true if negotiated/design-build method or GC is requesting early vendor pricing),
   "revenue_estimate": {
     "monthly_low": number,
     "monthly_high": number,

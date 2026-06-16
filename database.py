@@ -53,9 +53,8 @@ class Project(Base):
     alert             = Column(String)          # "new" | "status_changed" | "updated" | null
     alert_detail      = Column(String)          # e.g. "GC Bidding → Award"
 
-    # Confidence & queue
-    confidence_score  = Column(Float)           # 0-100; how certain we are in qualification
-    pending_status    = Column(String)          # null | "queue" | "routed" | "contacted"
+    # AI qualification confidence (0-100 scale of AI's self-reported certainty)
+    confidence_score  = Column(Float)
 
     # JSON columns (stored as text, SQLite has no native JSON type)
     status_history    = Column(Text)            # [{date, from, to}, ...]
@@ -118,7 +117,6 @@ Base.metadata.create_all(ENGINE)
 _MIGRATIONS = [
     "ALTER TABLE leads    ADD COLUMN project_snapshot TEXT",
     "ALTER TABLE projects ADD COLUMN confidence_score REAL",
-    "ALTER TABLE projects ADD COLUMN pending_status   TEXT",
 ]
 with ENGINE.connect() as _conn:
     for _sql in _MIGRATIONS:
