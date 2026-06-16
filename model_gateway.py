@@ -1,13 +1,14 @@
 """
-Model Gateway — three-tier cascade for AI qualification calls.
+Model Gateway — provider selection for AI qualification calls.
 
-Tier 1: Anthropic direct   — cheapest with prompt caching; preferred
-Tier 2: OpenRouter         — commercial fallback when Anthropic is unavailable
-Tier 3: Ollama local       — always available; lower-confidence marker
+Primary:  OpenRouter  — when OPENROUTER_API_KEY is set. OR handles its own
+                        internal model fallbacks across the configured route.
+Fallback: Anthropic   — used when no OpenRouter key is configured (e.g. local
+                        dev or before an OR account is set up). Prompt caching
+                        keeps batch costs low in this mode.
 
-Returns (result: dict, provider: str) where provider is one of the
-PROVIDER_* constants defined below. Callers should store the provider
-in the result dict as "_gateway_provider" so scorer.py can apply penalties.
+Local tier (Ollama) is preserved but commented out. Uncomment for extreme
+cases where both cloud providers are unavailable.
 """
 
 import json
@@ -23,15 +24,15 @@ from config import (
     QUALIFIER_MODEL,
     OPENROUTER_API_KEY,
     OPENROUTER_MODEL,
-    OLLAMA_BASE_URL,
-    OLLAMA_MODEL,
+    # OLLAMA_BASE_URL,  # uncomment with Ollama tier below
+    # OLLAMA_MODEL,
 )
 
 _log = logging.getLogger(__name__)
 
-PROVIDER_ANTHROPIC  = "anthropic"
 PROVIDER_OPENROUTER = "openrouter"
-PROVIDER_OLLAMA     = "ollama"
+PROVIDER_ANTHROPIC  = "anthropic"
+# PROVIDER_OLLAMA   = "ollama"  # uncomment with Ollama tier below
 
 _anthropic_client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
@@ -52,25 +53,7 @@ def _validate(result: dict) -> bool:
     return all(k in result for k in required)
 
 
-# ── Tier 1: Anthropic ─────────────────────────────────────────────────────────
-
-def _call_anthropic(system_prompt: str, user_content: str) -> dict:
-    response = _anthropic_client.messages.create(
-        model=QUALIFIER_MODEL,
-        max_tokens=1024,
-        system=[
-            {
-                "type": "text",
-                "text": system_prompt,
-                "cache_control": {"type": "ephemeral"},
-            }
-        ],
-        messages=[{"role": "user", "content": user_content}],
-    )
-    return json.loads(_strip_markdown(response.content[0].text))
-
-
-# ── Tier 2: OpenRouter ────────────────────────────────────────────────────────
+# ── Primary: OpenRouter ───────────────────────────────────────────────────────
 
 def _call_openrouter(system_prompt: str, user_content: str) -> dict:
     resp = requests.post(
@@ -95,75 +78,77 @@ def _call_openrouter(system_prompt: str, user_content: str) -> dict:
     return json.loads(_strip_markdown(resp.json()["choices"][0]["message"]["content"]))
 
 
-# ── Tier 3: Ollama ────────────────────────────────────────────────────────────
+# ── Fallback: Anthropic (no OpenRouter key configured) ────────────────────────
 
-def _call_ollama(system_prompt: str, user_content: str) -> dict:
-    resp = requests.post(
-        f"{OLLAMA_BASE_URL}/api/chat",
-        json={
-            "model": OLLAMA_MODEL,
-            "messages": [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_content},
-            ],
-            "stream": False,
-            "format": "json",
-        },
-        timeout=120,
+def _call_anthropic(system_prompt: str, user_content: str) -> dict:
+    response = _anthropic_client.messages.create(
+        model=QUALIFIER_MODEL,
+        max_tokens=1024,
+        system=[
+            {
+                "type": "text",
+                "text": system_prompt,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ],
+        messages=[{"role": "user", "content": user_content}],
     )
-    resp.raise_for_status()
-    return json.loads(_strip_markdown(resp.json()["message"]["content"]))
+    return json.loads(_strip_markdown(response.content[0].text))
 
 
-# ── Cascade ───────────────────────────────────────────────────────────────────
+# ── Local tier: Ollama — uncomment for extreme fallback scenarios ──────────────
+# def _call_ollama(system_prompt: str, user_content: str) -> dict:
+#     resp = requests.post(
+#         f"{OLLAMA_BASE_URL}/api/chat",
+#         json={
+#             "model": OLLAMA_MODEL,
+#             "messages": [
+#                 {"role": "system", "content": system_prompt},
+#                 {"role": "user", "content": user_content},
+#             ],
+#             "stream": False,
+#             "format": "json",
+#         },
+#         timeout=120,
+#     )
+#     resp.raise_for_status()
+#     return json.loads(_strip_markdown(resp.json()["message"]["content"]))
+
+
+# ── Provider selection ────────────────────────────────────────────────────────
 
 def call_with_cascade(system_prompt: str, user_content: str) -> Tuple[dict, str]:
     """
-    Try Anthropic → OpenRouter → Ollama in order.
+    Call the AI model via the configured provider.
 
-    Falls through to the next tier on transient failures (rate limit,
-    overload, network errors). Re-raises on permanent errors (bad API key).
+    If OPENROUTER_API_KEY is set, OpenRouter is used (with one retry on 429).
+    Model-level fallbacks within OpenRouter are handled by OR's own routing.
+
+    If no OPENROUTER_API_KEY, Anthropic direct is used as fallback (prompt
+    caching keeps batch cost low).
 
     Returns:
         (result_dict, provider_name)
 
     Raises:
-        RuntimeError  — all tiers failed (details in message)
+        RuntimeError               — provider call failed
         anthropic.AuthenticationError — bad Anthropic API key
     """
     errors: list[str] = []
 
-    # ── Tier 1 ────────────────────────────────────────────────────────────────
-    try:
-        result = _call_anthropic(system_prompt, user_content)
-        if _validate(result):
-            return result, PROVIDER_ANTHROPIC
-        errors.append("anthropic: response missing required fields")
-    except anthropic.AuthenticationError:
-        raise  # Bad key — surface immediately, don't silently fall through
-    except (anthropic.RateLimitError, anthropic.APIConnectionError) as e:
-        errors.append(f"anthropic transient: {type(e).__name__}")
-    except anthropic.APIStatusError as e:
-        if e.status_code >= 500:
-            errors.append(f"anthropic server error {e.status_code}")
-        else:
-            raise  # 4xx other than 429 = config / billing issue
-    except Exception as e:
-        errors.append(f"anthropic: {e}")
-
-    # ── Tier 2 ────────────────────────────────────────────────────────────────
     if OPENROUTER_API_KEY:
+        # ── OpenRouter (primary) ───────────────────────────────────────────────
         for attempt in range(2):
             try:
                 result = _call_openrouter(system_prompt, user_content)
                 if _validate(result):
-                    _log.warning("Gateway: fell back to OpenRouter. %s", "; ".join(errors))
                     return result, PROVIDER_OPENROUTER
                 errors.append("openrouter: response missing required fields")
                 break
             except requests.HTTPError as e:
                 code = e.response.status_code if e.response is not None else 0
                 if code == 429 and attempt == 0:
+                    _log.warning("OpenRouter 429 — retrying in 5s")
                     time.sleep(5)
                     continue
                 errors.append(f"openrouter HTTP {code}")
@@ -172,16 +157,25 @@ def call_with_cascade(system_prompt: str, user_content: str) -> Tuple[dict, str]
                 errors.append(f"openrouter network: {e}")
                 break
     else:
-        errors.append("openrouter: OPENROUTER_API_KEY not set")
+        # ── Anthropic (fallback when no OpenRouter key) ────────────────────────
+        try:
+            result = _call_anthropic(system_prompt, user_content)
+            if _validate(result):
+                return result, PROVIDER_ANTHROPIC
+            errors.append("anthropic: response missing required fields")
+        except anthropic.AuthenticationError:
+            raise  # Bad key — surface immediately
+        except Exception as e:
+            errors.append(f"anthropic: {e}")
 
-    # ── Tier 3 ────────────────────────────────────────────────────────────────
-    try:
-        result = _call_ollama(system_prompt, user_content)
-        if _validate(result):
-            _log.warning("Gateway: fell back to Ollama. %s", "; ".join(errors))
-            return result, PROVIDER_OLLAMA
-        errors.append("ollama: response missing required fields")
-    except requests.RequestException as e:
-        errors.append(f"ollama: {e}")
+    # ── Local tier: Ollama — uncomment for extreme fallback scenarios ──────────
+    # try:
+    #     result = _call_ollama(system_prompt, user_content)
+    #     if _validate(result):
+    #         _log.warning("Gateway: fell back to Ollama. %s", "; ".join(errors))
+    #         return result, PROVIDER_OLLAMA
+    #     errors.append("ollama: response missing required fields")
+    # except requests.RequestException as e:
+    #     errors.append(f"ollama: {e}")
 
-    raise RuntimeError(f"All gateway tiers failed — {'; '.join(errors)}")
+    raise RuntimeError(f"Gateway failed — {'; '.join(errors)}")

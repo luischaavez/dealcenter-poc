@@ -115,26 +115,14 @@ def score_project(project: dict, ai_result: dict) -> dict:
     Weights are read from scoring_weights.json on every call so changes
     take effect without restarting the pipeline.
     """
-    weights  = _load_weights()
-    earned   = _evaluate_factors(project, ai_result, weights)
-    total    = min(sum(f["points"] for f in earned), 100)
-
-    # ── Gateway provider penalty ─────────────────────────────────────────
-    # Lower tiers produce less reliable AI results; discount conservatively.
-    _PROVIDER_PENALTY = {"openrouter": -5, "ollama": -10}
-    provider = ai_result.get("_gateway_provider", "anthropic")
-    penalty = _PROVIDER_PENALTY.get(provider, 0)
-    if penalty:
-        total = max(total + penalty, 0)
-
-    score_factors = [f"{f['label']} (+{f['points']})" for f in earned]
-    if penalty:
-        score_factors.append(f"Gateway tier '{provider}' ({penalty:+d})")
+    weights = _load_weights()
+    earned  = _evaluate_factors(project, ai_result, weights)
+    total   = min(sum(f["points"] for f in earned), 100)
 
     return {
         "final_score":     float(total),
         "score_breakdown": earned,
-        "score_factors":   score_factors,
+        "score_factors":   [f"{f['label']} (+{f['points']})" for f in earned],
         "blockers":        ai_result.get("actionability_blockers") or [],
-        "gateway_provider": provider,
+        "gateway_provider": ai_result.get("_gateway_provider", "anthropic"),
     }
