@@ -35,7 +35,24 @@ from summarizer import generate_summary
 from ledger import check_project, update_project, save_run, save_leads
 
 
-def run_pipeline(dry_run: bool = False, limit: int = None, dodge_path: str = None) -> list:
+def run_pipeline(
+    dry_run: bool = False,
+    limit: int = None,
+    dodge_path: str = None,
+    on_progress=None,
+) -> list:
+    """
+    on_progress: optional callable(stage: str, current: int | None, total: int | None)
+                 called at each stage boundary so callers (e.g. the API thread) can
+                 surface live progress without polling stdout.
+    """
+    def _stage(label: str, current: int | None = None, total: int | None = None) -> None:
+        print(f"\n{'─' * 55}")
+        print(f"  {label}" + (f"  ({current}/{total})" if total else ""))
+        print(f"{'─' * 55}")
+        if on_progress:
+            on_progress(label, current, total)
+
     print(f"\n{'═' * 65}")
     print("  DEALCENTER PIPELINE")
     print(f"  States: {', '.join(SEARCH_STATES)}  |  Last {SEARCH_DAYS_BACK} days")
@@ -50,42 +67,50 @@ def run_pipeline(dry_run: bool = False, limit: int = None, dodge_path: str = Non
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     # ── Stage 1a: Ingest from ConstructConnect ─────────────────────────
-    print("STAGE 1a  Ingesting from ConstructConnect...")
-    cc = ConstructConnectClient()
-    cc_projects = list(
-        cc.fetch_all(
-            states=SEARCH_STATES,
-            days_back=SEARCH_DAYS_BACK,
-            max_projects=limit,
+    _stage("Ingesting from ConstructConnect…")
+    cc_projects = []
+    try:
+        cc = ConstructConnectClient()
+        cc_projects = list(
+            cc.fetch_all(
+                states=SEARCH_STATES,
+                days_back=SEARCH_DAYS_BACK,
+                max_projects=limit,
+            )
         )
-    )
-    print(f"  Ingested: {len(cc_projects):,} CC projects\n")
+        print(f"  Ingested: {len(cc_projects):,} CC projects")
+    except Exception as exc:
+        print(f"  WARNING: ConstructConnect unavailable — {exc}")
+        print("  Continuing without CC data.")
 
-    # ── Stage 1b: Ingest from Dodge Excel (optional) ───────────────────
+    # ── Stage 1b: Ingest from Dodge (optional) ────────────────────────
     dodge_projects = []
     effective_dodge_path = dodge_path or os.environ.get("DODGE_EXCEL_PATH")
     if effective_dodge_path:
-        print(f"STAGE 1b  Importing Dodge Excel: {effective_dodge_path}...")
+        _stage(f"Importing Dodge: {effective_dodge_path}")
         try:
             dodge_projects = DodgeClient.load(effective_dodge_path)
-            print(f"  Imported: {len(dodge_projects):,} Dodge projects\n")
+            print(f"  Imported: {len(dodge_projects):,} Dodge projects")
         except Exception as exc:
-            print(f"  WARNING: Dodge import failed — {exc}\n")
+            print(f"  WARNING: Dodge import failed — {exc}")
     else:
-        print("STAGE 1b  Dodge import skipped (no --dodge path or DODGE_EXCEL_PATH)\n")
+        print("\nStage 1b  Dodge import skipped (no --dodge path or DODGE_EXCEL_PATH)")
+
+    if not cc_projects and not dodge_projects:
+        print("\nNo projects ingested from any source — aborting.")
+        return []
 
     # ── Stage 1.5: Cross-source deduplication ─────────────────────────
     if dodge_projects:
-        print("STAGE 1.5  Cross-source deduplication...")
+        _stage("Deduplicating CC + Dodge…")
         all_projects = deduplicate(cc_projects, dodge_projects)
-        print()
     else:
         all_projects = cc_projects
 
-    print(f"  Total after dedup: {len(all_projects):,} projects\n")
+    print(f"  Total: {len(all_projects):,} projects")
 
     # ── Stage 2: Hard Filter ───────────────────────────────────────────
-    print("STAGE 2  Applying hard filters...")
+    _stage("Applying hard filters…")
     passed = []
     fail_counts: dict[str, int] = {}
 
@@ -97,15 +122,14 @@ def run_pipeline(dry_run: bool = False, limit: int = None, dodge_path: str = Non
             for reason in failures:
                 fail_counts[reason] = fail_counts.get(reason, 0) + 1
 
-    print(f"  Passed : {len(passed)} / {len(all_projects)}")
+    print(f"  Passed: {len(passed)} / {len(all_projects)}")
     if fail_counts:
         print("  Top disqualifiers:")
         for reason, n in sorted(fail_counts.items(), key=lambda x: -x[1])[:6]:
             print(f"    {n:4d}  {reason}")
-    print()
 
     if dry_run:
-        print(f"DRY RUN — top {min(15, len(passed))} projects after hard filter:\n")
+        print(f"\nDRY RUN — top {min(15, len(passed))} projects after hard filter:\n")
         for p in passed[:15]:
             print(
                 f"  {p.get('projectStatus', '?'):28}  "
@@ -116,20 +140,18 @@ def run_pipeline(dry_run: bool = False, limit: int = None, dodge_path: str = Non
         return []
 
     if not passed:
-        print("No projects passed hard filters. Exiting.")
+        print("  No projects passed hard filters — aborting.")
         return []
 
     # ── Stage 2.5: Memory Check ────────────────────────────────────────
-    print("STAGE 2.5  Checking project ledger...")
+    _stage("Checking project ledger…")
 
-    to_qualify   = []  # list of (project, alert)
-    from_cache   = []  # list of result dicts with cached ai/score results
+    to_qualify = []
+    from_cache = []
 
     for project in passed:
         alert, cached = check_project(project)
-
         if alert is None:
-            # Known, unchanged — re-score with current data (cheap) but skip Haiku
             ai_result    = cached["ai_result"]
             score_result = score_project(project, ai_result)
             from_cache.append({
@@ -149,17 +171,18 @@ def run_pipeline(dry_run: bool = False, limit: int = None, dodge_path: str = Non
     print(f"  New:            {new_count}")
     print(f"  Changed:        {changed_count}  (status/value/companies updated)")
     print(f"  Cached (no AI): {cached_count}")
-    print()
 
     # ── Stage 3: AI Qualification ──────────────────────────────────────
-    fresh_results = []
+    fresh_results  = []
     qualified_fresh = 0
+    ai_errors      = 0
 
     if to_qualify:
-        print(f"STAGE 3  AI qualification ({len(to_qualify)} new/changed projects)...")
-        print("  (System prompt cached after first call — subsequent calls are cheaper)\n")
+        _stage("AI Qualification", current=0, total=len(to_qualify))
 
         for i, (project, alert) in enumerate(to_qualify, 1):
+            if on_progress:
+                on_progress("AI Qualification", i, len(to_qualify))
             title_short = (project.get("title") or "N/A")[:50]
             alert_tag   = f"[{alert}]" if alert != "new" else "[new]"
             print(f"  [{i:3d}/{len(to_qualify)}]  {title_short:<50} {alert_tag:<17}", end="  ", flush=True)
@@ -167,7 +190,6 @@ def run_pipeline(dry_run: bool = False, limit: int = None, dodge_path: str = Non
                 ai_result    = qualify_project(project)
                 score_result = score_project(project, ai_result)
 
-                # Determine alert_detail for status changes
                 alert_detail = None
                 if alert == "status_changed":
                     from database import get_db, Project as ProjectModel
@@ -192,24 +214,27 @@ def run_pipeline(dry_run: bool = False, limit: int = None, dodge_path: str = Non
                     print(f"✗  {reason}")
 
             except Exception as exc:
+                ai_errors += 1
                 print(f"ERROR  {exc}")
                 fresh_results.append({"project": project, "error": str(exc),
                                       "alert": alert, "alert_detail": None})
-    else:
-        print("STAGE 3  AI qualification — all projects cached, skipping.\n")
 
-    # Merge cached + fresh results
-    results = from_cache + fresh_results
+        if ai_errors:
+            print(f"\n  ⚠ {ai_errors} project(s) failed AI qualification and were skipped.")
+    else:
+        print("\n  Stage 3: all projects cached — skipping AI qualification.")
+
+    results         = from_cache + fresh_results
     qualified_count = sum(1 for r in results if r.get("ai_result", {}).get("qualifies"))
 
     if to_qualify:
         cached_qualifying = sum(1 for r in from_cache if r.get("ai_result", {}).get("qualifies"))
-        print(f"\n  Qualified (fresh): {qualified_fresh} / {len(to_qualify)}")
+        print(f"\n  Qualified (fresh):  {qualified_fresh} / {len(to_qualify)}")
         print(f"  Qualified (cached): {cached_qualifying}")
-        print(f"  Total qualified:    {qualified_count}\n")
+        print(f"  Total qualified:    {qualified_count}")
 
-    # ── Update ledger for all processed projects ───────────────────────
-    print("  Updating project ledger...")
+    # ── Update ledger ──────────────────────────────────────────────────
+    _stage("Updating project ledger…")
     for r in results:
         if r.get("ai_result"):
             update_project(
@@ -220,27 +245,25 @@ def run_pipeline(dry_run: bool = False, limit: int = None, dodge_path: str = Non
                 alert        = r.get("alert"),
                 alert_detail = r.get("alert_detail"),
             )
-    print()
 
     # ── Stage 4: Score & Rank ──────────────────────────────────────────
-    print("STAGE 4  Ranking qualified leads...")
+    _stage("Ranking qualified leads…")
     qualified = [r for r in results if r.get("ai_result", {}).get("qualifies")]
     qualified.sort(key=lambda x: x["score_result"]["final_score"], reverse=True)
     top_leads = qualified[:MAX_LEADS_PER_RUN]
 
-    # Stamp rank onto each result dict (used by save_leads and formatter)
     for i, r in enumerate(top_leads, 1):
         r["rank"] = i
 
-    print(f"  Top {len(top_leads)} leads selected\n")
+    print(f"  Top {len(top_leads)} leads selected")
 
-    # ── Stage 4.5: Sonnet Executive Summaries ─────────────────────────
-    print(f"STAGE 4.5  Generating sales briefs (Sonnet) for top {len(top_leads)} leads...")
-    print("  (System prompt cached after first call — subsequent calls are cheaper)\n")
+    # ── Stage 4.5: Sonnet Summaries ────────────────────────────────────
+    _stage("Generating sales briefs…", current=0, total=len(top_leads))
 
     for i, r in enumerate(top_leads, 1):
+        if on_progress:
+            on_progress("Generating sales briefs", i, len(top_leads))
         title_short = (r["project"].get("title") or "N/A")[:50]
-        # Re-use existing summary if project was cached AND summary exists
         if r.get("alert") is None and r.get("narrative_summary"):
             print(f"  [{i:2d}/{len(top_leads)}]  {title_short:<52}  (cached)")
             continue
@@ -254,10 +277,8 @@ def run_pipeline(dry_run: bool = False, limit: int = None, dodge_path: str = Non
             print(f"ERROR  {exc}")
             r["narrative_summary"] = ""
 
-    print()
-
     # ── Stage 5: Output ────────────────────────────────────────────────
-    print("STAGE 5  Generating output...")
+    _stage("Saving output…")
     print_leaderboard(top_leads)
     save_results(results, output_dir=OUTPUT_DIR)
 
@@ -270,11 +291,9 @@ def run_pipeline(dry_run: bool = False, limit: int = None, dodge_path: str = Non
         "days_back": SEARCH_DAYS_BACK,
     }
     save_web_output(results, run_stats, output_dir=OUTPUT_DIR)
-
-    # Persist run + leads to SQLite
     save_run(run_id, run_stats)
     save_leads(run_id, top_leads)
-    print(f"  SQLite           : dealcenter.db  (runs + leads + ledger)")
+    print(f"  SQLite: dealcenter.db  (runs + leads + ledger)")
 
     return top_leads
 

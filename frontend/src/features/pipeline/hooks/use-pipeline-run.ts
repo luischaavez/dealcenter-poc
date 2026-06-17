@@ -11,6 +11,8 @@ const IDLE: PipelineStatus = {
   status: "idle",
   run_id: null,
   started_at: null,
+  stage: null,
+  progress: null,
   error: null,
 };
 
@@ -51,7 +53,7 @@ export function usePipelineRun() {
     try {
       const result = await triggerPipeline();
       if (result.accepted) {
-        setPipeline({ ...IDLE, status: "running" });
+        setPipeline({ ...IDLE, status: "running", stage: "Starting…" });
         toast.info("Pipeline started…");
       } else {
         toast.warning(result.message);
