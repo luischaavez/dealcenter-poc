@@ -111,27 +111,6 @@ def _run_pipeline_task(dodge_path: str | None = None) -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # ── Scheduled pipeline runs ───────────────────────────────────────────────
-    # Uncomment the block below (and add apscheduler>=3.10.0 to requirements.txt)
-    # to enable automatic pipeline runs on a cron schedule.
-    #
-    # from apscheduler.schedulers.background import BackgroundScheduler
-    # from apscheduler.triggers.cron import CronTrigger
-    # from config import PIPELINE_CRON_SCHEDULE
-    #
-    # scheduler = BackgroundScheduler(timezone="UTC")
-    # scheduler.add_job(
-    #     _run_pipeline_task,
-    #     trigger=CronTrigger.from_crontab(PIPELINE_CRON_SCHEDULE),
-    #     id="scheduled_pipeline",
-    #     replace_existing=True,
-    #     misfire_grace_time=3600,  # run up to 1 h late if server was down at scheduled time
-    # )
-    # scheduler.start()
-    # print(f"DealCenter API ready — pipeline scheduled: {PIPELINE_CRON_SCHEDULE}")
-    # yield
-    # scheduler.shutdown()
-    # ─────────────────────────────────────────────────────────────────────────
     print("DealCenter API ready")
     yield
 
