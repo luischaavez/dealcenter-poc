@@ -12,6 +12,7 @@ import {
   TrendingUp,
   X,
 } from "lucide-react";
+import { RunPipelineButton } from "@/features/pipeline/components/run-pipeline-button";
 import {
   allServices,
   allStatuses,
@@ -73,9 +74,7 @@ export function OpportunitiesPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <button className="h-9 px-3.5 inline-flex items-center gap-1.5 rounded-md bg-foreground text-background text-[13px] font-medium hover:opacity-90 transition-opacity">
-              <Sparkles className="size-3.5" /> Run intelligence
-            </button>
+            <RunPipelineButton />
           </div>
         </div>
 
