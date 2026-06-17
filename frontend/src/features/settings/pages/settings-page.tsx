@@ -1,5 +1,8 @@
-import { useState } from "react";
-import { Info } from "lucide-react";
+import { useState, useRef, useCallback } from "react";
+import { Info, Upload, FileSpreadsheet, CheckCircle2, Loader2 } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { fetchDodgeUploads, uploadDodgeFile } from "@/lib/api";
 import {
   allServices,
   allStatusTiers,
@@ -49,6 +52,7 @@ export function SettingsPage() {
 
         <div className="flex-1 min-w-0 space-y-5">
           {tab === "sources" && <SourcesPanel />}
+          {tab === "imports" && <ImportsPanel />}
           {tab === "scoring" && <ScoringPanel />}
           {tab === "notifications" && <NotificationsPanel />}
           {tab === "users" && <UsersPanel />}
@@ -170,6 +174,127 @@ function ReadOnlyValue({ value }: { value: string }) {
     <span className="min-w-16 h-9 rounded-md border border-input bg-background px-3 text-[13px] num text-charcoal inline-flex items-center justify-end">
       {value}
     </span>
+  );
+}
+
+function ImportsPanel() {
+  const queryClient = useQueryClient();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
+  const [uploading, setUploading] = useState(false);
+
+  const { data: uploads, isLoading } = useQuery({
+    queryKey: ["dodge-uploads"],
+    queryFn: fetchDodgeUploads,
+  });
+
+  const handleFile = useCallback(
+    async (file: File) => {
+      if (!file.name.endsWith(".xlsx")) {
+        toast.error("Only .xlsx files are accepted");
+        return;
+      }
+      setUploading(true);
+      try {
+        await uploadDodgeFile(file);
+        await queryClient.invalidateQueries({ queryKey: ["dodge-uploads"] });
+        toast.success(`${file.name} uploaded — pipeline will use it today`);
+      } catch (e) {
+        toast.error(`Upload failed: ${e}`);
+      } finally {
+        setUploading(false);
+        if (inputRef.current) inputRef.current.value = "";
+      }
+    },
+    [queryClient],
+  );
+
+  const onDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragging(false);
+      const file = e.dataTransfer.files[0];
+      if (file) handleFile(file);
+    },
+    [handleFile],
+  );
+
+  return (
+    <>
+      <Card
+        title="Upload Dodge export"
+        subtitle="The pipeline automatically uses the file uploaded on the day it runs"
+      >
+        <div
+          onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={onDrop}
+          onClick={() => !uploading && inputRef.current?.click()}
+          className={[
+            "flex flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed px-6 py-10 transition-colors cursor-pointer select-none",
+            dragging
+              ? "border-primary bg-primary/5"
+              : "border-border bg-background hover:border-muted-foreground/40 hover:bg-secondary/30",
+            uploading ? "pointer-events-none opacity-60" : "",
+          ].join(" ")}
+        >
+          <input
+            ref={inputRef}
+            type="file"
+            accept=".xlsx"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleFile(file);
+            }}
+          />
+          {uploading ? (
+            <Loader2 className="size-7 text-muted-foreground animate-spin" />
+          ) : (
+            <Upload className="size-7 text-muted-foreground" />
+          )}
+          <p className="text-[13px] font-medium text-charcoal">
+            {uploading ? "Uploading…" : "Drop your .xlsx file here"}
+          </p>
+          <p className="text-[11.5px] text-muted-foreground">
+            {uploading ? "Please wait" : "or click to browse"}
+          </p>
+        </div>
+      </Card>
+
+      <Card
+        title="Upload history"
+        subtitle="Files available in object storage"
+      >
+        {isLoading ? (
+          <div className="flex items-center gap-2 py-4 text-[12.5px] text-muted-foreground">
+            <Loader2 className="size-3.5 animate-spin" /> Loading…
+          </div>
+        ) : !uploads?.length ? (
+          <EmptyState message="No Dodge files uploaded yet." />
+        ) : (
+          <div className="divide-y divide-border">
+            {uploads.map((u) => (
+              <div key={u.id} className="flex items-center gap-3 py-3">
+                <FileSpreadsheet className="size-4 text-muted-foreground shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-medium text-charcoal truncate">
+                    {u.filename}
+                  </p>
+                  <p className="text-[11.5px] text-muted-foreground">
+                    For {u.file_date}
+                    {u.uploaded_at
+                      ? ` · uploaded ${formatDateTime(u.uploaded_at)}`
+                      : ""}
+                  </p>
+                </div>
+                <CheckCircle2 className="size-4 text-[oklch(0.5_0.13_155)] shrink-0" />
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+    </>
   );
 }
 
