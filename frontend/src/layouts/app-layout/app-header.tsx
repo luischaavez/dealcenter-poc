@@ -1,4 +1,5 @@
 import { Bell, Search } from "lucide-react";
+import { RunPipelineButton } from "@/features/pipeline/components/run-pipeline-button";
 
 export function AppHeader({ title }: { title: string }) {
   return (
@@ -7,6 +8,7 @@ export function AppHeader({ title }: { title: string }) {
         {title}
       </h1>
       <div className="ml-auto flex items-center gap-2">
+        <RunPipelineButton />
         <div className="relative">
           <Search className="size-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <input

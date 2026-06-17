@@ -88,6 +88,10 @@ SUMMARY_MODEL = "claude-sonnet-4-5"
 
 # --- Model Gateway ---
 # Tier 2: OpenRouter (commercial models, OpenAI-compatible API)
+# Cron expression for automatic pipeline runs — uncomment and install apscheduler to enable.
+# See api.py lifespan() for the scheduler setup.
+# PIPELINE_CRON_SCHEDULE = os.getenv("PIPELINE_CRON_SCHEDULE", "0 7 * * *")  # 7 AM UTC daily
+
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 # Comma-separated list of models in fallback order. OR tries each in sequence
 # if the previous one is unavailable, rate-limited, or errors out.
