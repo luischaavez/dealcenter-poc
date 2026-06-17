@@ -50,15 +50,10 @@ const STATIC: ComputedLeadsData = {
   changeTrend: staticChangeTrend,
 };
 
-const API_URL = (import.meta.env.VITE_API_URL as string | undefined) ?? "";
-
 export function LeadsProvider({ children }: { children: ReactNode }) {
   const { data: apiPayload, isLoading } = useQuery({
     queryKey: ["leads-latest"],
     queryFn: fetchLatestLeads,
-    // Only run if VITE_API_URL is configured
-    enabled: Boolean(API_URL),
-    // Cache for 5 minutes — pipeline runs aren't real-time
     staleTime: 5 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
   });
@@ -72,7 +67,7 @@ export function LeadsProvider({ children }: { children: ReactNode }) {
       value={{
         ...computed,
         isLive: Boolean(apiPayload),
-        isLoading: Boolean(API_URL) && isLoading,
+        isLoading,
       }}
     >
       {children}
