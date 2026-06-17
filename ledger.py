@@ -25,7 +25,7 @@ import json
 from datetime import datetime
 from typing import Optional, Tuple
 
-from database import get_db, Project, Run, Lead
+from database import get_db, Project, Run, Lead, DodgeUpload
 
 
 # ── Change detection ──────────────────────────────────────────────────────────
@@ -214,3 +214,30 @@ def save_leads(run_id: str, top_leads: list) -> None:
                 project_snapshot  = json.dumps(r.get("project", {})),
             ))
         session.commit()
+
+
+def get_todays_dodge_upload(date_str: Optional[str] = None) -> Optional[DodgeUpload]:
+    """Return the DodgeUpload for today (or date_str as YYYY-MM-DD), or None."""
+    target = date_str or datetime.utcnow().strftime("%Y-%m-%d")
+    with get_db() as session:
+        return (
+            session.query(DodgeUpload)
+            .filter(DodgeUpload.file_date == target)
+            .order_by(DodgeUpload.id.desc())
+            .first()
+        )
+
+
+def register_dodge_upload(storage_key: str, filename: str, file_date: Optional[str] = None) -> DodgeUpload:
+    """Insert a DodgeUpload record and return it."""
+    record = DodgeUpload(
+        file_date   = file_date or datetime.utcnow().strftime("%Y-%m-%d"),
+        uploaded_at = datetime.utcnow(),
+        storage_key = storage_key,
+        filename    = filename,
+    )
+    with get_db() as session:
+        session.add(record)
+        session.commit()
+        session.refresh(record)
+        return record
