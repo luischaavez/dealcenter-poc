@@ -13,8 +13,13 @@ Migration path:
 """
 
 import json
+import os
 from datetime import datetime
 from pathlib import Path
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from sqlalchemy import (
     Boolean, Column, DateTime, Float, Integer, String, Text, create_engine, text,
@@ -22,7 +27,24 @@ from sqlalchemy import (
 from sqlalchemy.orm import DeclarativeBase, Session
 
 DB_PATH = Path("dealcenter.db")
-ENGINE  = create_engine(f"sqlite:///{DB_PATH}", echo=False)
+
+# Prefer DATABASE_URL (Railway Postgres) — fall back to local SQLite for dev
+_DATABASE_URL = os.environ.get("DATABASE_URL", f"sqlite:///{DB_PATH}")
+# SQLAlchemy requires "postgresql://" — Railway may still emit the old "postgres://" scheme
+_DATABASE_URL = _DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+_is_sqlite = _DATABASE_URL.startswith("sqlite")
+
+if _is_sqlite:
+    ENGINE = create_engine(_DATABASE_URL, echo=False)
+else:
+    ENGINE = create_engine(
+        _DATABASE_URL,
+        echo=False,
+        pool_pre_ping=True,   # detect stale connections
+        pool_size=5,
+        max_overflow=10,
+    )
 
 
 class Base(DeclarativeBase):
@@ -114,17 +136,19 @@ class Lead(Base):
 Base.metadata.create_all(ENGINE)
 
 # ── Startup migrations (safe no-op if column already exists) ─────────────────
+# Each migration runs in its own connection so a failure doesn't poison the
+# transaction state for subsequent ones (matters on PostgreSQL).
 _MIGRATIONS = [
     "ALTER TABLE leads    ADD COLUMN project_snapshot TEXT",
     "ALTER TABLE projects ADD COLUMN confidence_score REAL",
 ]
-with ENGINE.connect() as _conn:
-    for _sql in _MIGRATIONS:
-        try:
+for _sql in _MIGRATIONS:
+    try:
+        with ENGINE.connect() as _conn:
             _conn.execute(text(_sql))
             _conn.commit()
-        except Exception:
-            pass
+    except Exception:
+        pass
 
 
 def get_db() -> Session:
