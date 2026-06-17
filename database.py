@@ -22,7 +22,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from sqlalchemy import (
-    Boolean, Column, DateTime, Float, Integer, String, Text, create_engine, text,
+    Boolean, Column, DateTime, Float, Integer, String, Text, create_engine,
 )
 from sqlalchemy.orm import DeclarativeBase, Session
 
@@ -130,25 +130,6 @@ class Lead(Base):
     score_result      = Column(Text)                 # JSON
     narrative_summary = Column(Text)
     project_snapshot  = Column(Text)                 # full raw project JSON at pipeline run time
-
-
-# ── Create all tables (idempotent — safe to call on every startup) ────────────
-Base.metadata.create_all(ENGINE)
-
-# ── Startup migrations (safe no-op if column already exists) ─────────────────
-# Each migration runs in its own connection so a failure doesn't poison the
-# transaction state for subsequent ones (matters on PostgreSQL).
-_MIGRATIONS = [
-    "ALTER TABLE leads    ADD COLUMN project_snapshot TEXT",
-    "ALTER TABLE projects ADD COLUMN confidence_score REAL",
-]
-for _sql in _MIGRATIONS:
-    try:
-        with ENGINE.connect() as _conn:
-            _conn.execute(text(_sql))
-            _conn.commit()
-    except Exception:
-        pass
 
 
 def get_db() -> Session:
