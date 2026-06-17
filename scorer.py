@@ -115,14 +115,14 @@ def score_project(project: dict, ai_result: dict) -> dict:
     Weights are read from scoring_weights.json on every call so changes
     take effect without restarting the pipeline.
     """
-    weights  = _load_weights()
-    earned   = _evaluate_factors(project, ai_result, weights)
-    total    = min(sum(f["points"] for f in earned), 100)
+    weights = _load_weights()
+    earned  = _evaluate_factors(project, ai_result, weights)
+    total   = min(sum(f["points"] for f in earned), 100)
 
     return {
         "final_score":     float(total),
         "score_breakdown": earned,
-        # score_factors: human-readable strings for display / backward compat
         "score_factors":   [f"{f['label']} (+{f['points']})" for f in earned],
         "blockers":        ai_result.get("actionability_blockers") or [],
+        "gateway_provider": ai_result.get("_gateway_provider", "anthropic"),
     }
