@@ -1,4 +1,5 @@
 import { Outlet, useRouterState } from "@tanstack/react-router";
+import { Toaster } from "@/components/ui/sonner";
 import { AppHeader } from "./app-header";
 import { appNavigation } from "./app-navigation";
 import { AppSidebar } from "./app-sidebar";
@@ -18,6 +19,7 @@ export function AppLayout({ children }: { children?: React.ReactNode }) {
           {children ?? <Outlet />}
         </main>
       </div>
+      <Toaster position="bottom-right" richColors />
     </div>
   );
 }
