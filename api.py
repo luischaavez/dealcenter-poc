@@ -35,11 +35,37 @@ _LATEST_JSON = Path("ui/data/leads_latest.json")
 
 _pipeline_lock = threading.Lock()
 _pipeline: dict = {
-    "status":     "idle",
+    "status":     "idle",   # "idle" | "running" | "error"
     "run_id":     None,
     "started_at": None,
+    "stage":      None,     # human-readable current stage label
+    "progress":   None,     # {"current": int, "total": int} or None
     "error":      None,
 }
+
+
+def _set_stage(stage: str, current: int | None = None, total: int | None = None) -> None:
+    """Update the pipeline stage visible via GET /pipeline/status."""
+    with _pipeline_lock:
+        _pipeline["stage"]    = stage
+        _pipeline["progress"] = {"current": current, "total": total} if total else None
+
+
+def _classify_error(exc: Exception) -> str:
+    """Return a user-facing error message from a raw exception."""
+    msg = str(exc)
+    low = msg.lower()
+    if "api_key" in low or "authentication" in low or "401" in low:
+        return "AI provider authentication failed — check API keys in environment"
+    if "rate limit" in low or "429" in low:
+        return "AI provider rate limit — wait a few minutes and retry"
+    if any(k in low for k in ("connection", "timeout", "network", "ssl", "resolve")):
+        return f"Network error reaching external API — {msg}"
+    if "database" in low or "sqlite" in low or "operationalerror" in low:
+        return f"Database error — {msg}"
+    if "constructconnect" in low or "cc api" in low:
+        return f"ConstructConnect API error — {msg}"
+    return msg
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -94,14 +120,18 @@ def _run_pipeline_task(dodge_path: str | None = None) -> None:
     from main import run_pipeline  # noqa: PLC0415
 
     try:
-        run_pipeline(dodge_path=dodge_path)
+        run_pipeline(dodge_path=dodge_path, on_progress=_set_stage)
         with _pipeline_lock:
-            _pipeline["status"] = "idle"
-            _pipeline["error"]  = None
+            _pipeline["status"]   = "idle"
+            _pipeline["stage"]    = None
+            _pipeline["progress"] = None
+            _pipeline["error"]    = None
     except Exception as e:
         with _pipeline_lock:
-            _pipeline["status"] = "error"
-            _pipeline["error"]  = str(e)
+            _pipeline["status"]   = "error"
+            _pipeline["stage"]    = None
+            _pipeline["progress"] = None
+            _pipeline["error"]    = _classify_error(e)
     finally:
         with _pipeline_lock:
             _pipeline["run_id"] = None

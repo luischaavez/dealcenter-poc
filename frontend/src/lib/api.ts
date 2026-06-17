@@ -22,6 +22,8 @@ export interface PipelineStatus {
   status: "idle" | "running" | "error";
   run_id: string | null;
   started_at: string | null;
+  stage: string | null;
+  progress: { current: number; total: number } | null;
   error: string | null;
 }
 
