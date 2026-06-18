@@ -66,3 +66,36 @@ export async function fetchPipelineStatus(): Promise<PipelineStatus> {
   if (!res.ok) throw new Error(`API /pipeline/status returned ${res.status}`);
   return res.json();
 }
+
+export interface DodgeUpload {
+  id: number;
+  file_date: string;
+  uploaded_at: string | null;
+  storage_key: string;
+  filename: string;
+}
+
+/** List all registered Dodge uploads, newest first. */
+export async function fetchDodgeUploads(): Promise<DodgeUpload[]> {
+  const res = await fetch(`${API_URL}/dodge/uploads`);
+  if (!res.ok) throw new Error(`API /dodge/uploads returned ${res.status}`);
+  return res.json();
+}
+
+/** Upload a Dodge Excel file and register it for the given date (defaults to today). */
+export async function uploadDodgeFile(
+  file: File,
+  fileDate?: string,
+): Promise<DodgeUpload> {
+  const form = new FormData();
+  form.append("file", file);
+  const url = fileDate
+    ? `${API_URL}/dodge/upload?file_date=${fileDate}`
+    : `${API_URL}/dodge/upload`;
+  const res = await fetch(url, { method: "POST", body: form });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error((detail as { detail?: string })?.detail ?? `Upload failed (${res.status})`);
+  }
+  return res.json();
+}

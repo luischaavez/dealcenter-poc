@@ -11,20 +11,23 @@ Endpoints
   GET  /leads/{project_id}    → most recent Lead row for the given project
   GET  /pipeline/status       → current pipeline state
   POST /pipeline/run          → trigger a pipeline run (non-blocking)
+  POST /dodge/upload          → upload a Dodge Excel file to object storage + register in DB
+  GET  /dodge/uploads         → list all registered Dodge uploads
 """
 
 import json
 import os
+import tempfile
 import threading
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import desc
 
-from database import get_db, Run, Lead
+from database import get_db, Run, Lead, DodgeUpload
 from formatter import to_web_lead
 
 # Path to the pre-generated JSON file (written by formatter.save_web_output)
@@ -291,3 +294,79 @@ def trigger_pipeline(dodge_path: str | None = None):
     )
     thread.start()
     return {"accepted": True, "message": "Pipeline started", "dodge_path": dodge_path}
+
+
+# ── Dodge upload endpoints ────────────────────────────────────────────────────
+
+@app.post("/dodge/upload")
+async def upload_dodge_file(
+    file: UploadFile = File(...),
+    file_date: str | None = None,
+):
+    """
+    Upload a Dodge Excel export to object storage and register it in the DB.
+
+    The pipeline will automatically use the file whose file_date matches
+    the day it runs. file_date defaults to today (UTC) if not provided.
+    Format: YYYY-MM-DD
+    """
+    from storage import upload, is_configured
+    from ledger import register_dodge_upload
+
+    if not is_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="Object storage is not configured — set STORAGE_BUCKET, STORAGE_ACCESS_KEY, STORAGE_SECRET_KEY",
+        )
+
+    allowed = (".xlsx", ".csv")
+    if not file.filename or not file.filename.endswith(allowed):
+        raise HTTPException(status_code=400, detail="Only .xlsx and .csv files are accepted")
+
+    suffix = Path(file.filename).suffix.lower()
+    target_date = file_date or datetime.utcnow().strftime("%Y-%m-%d")
+    storage_key = f"dodge/{target_date}/{file.filename}"
+
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+        tmp.write(await file.read())
+        tmp_path = tmp.name
+
+    try:
+        upload(tmp_path, storage_key)
+    finally:
+        os.unlink(tmp_path)
+
+    record = register_dodge_upload(
+        storage_key=storage_key,
+        filename=file.filename,
+        file_date=target_date,
+    )
+
+    return {
+        "id":          record.id,
+        "file_date":   record.file_date,
+        "uploaded_at": record.uploaded_at.isoformat(),
+        "storage_key": record.storage_key,
+        "filename":    record.filename,
+    }
+
+
+@app.get("/dodge/uploads")
+def list_dodge_uploads():
+    """List all registered Dodge uploads, newest first."""
+    with get_db() as session:
+        rows = (
+            session.query(DodgeUpload)
+            .order_by(DodgeUpload.id.desc())
+            .all()
+        )
+        return [
+            {
+                "id":          r.id,
+                "file_date":   r.file_date,
+                "uploaded_at": r.uploaded_at.isoformat() if r.uploaded_at else None,
+                "storage_key": r.storage_key,
+                "filename":    r.filename,
+            }
+            for r in rows
+        ]
