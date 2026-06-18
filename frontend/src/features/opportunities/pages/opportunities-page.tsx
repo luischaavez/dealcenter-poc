@@ -1,11 +1,11 @@
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowUpRight,
-  Bell,
   Building2,
   ChevronLeft,
   ChevronRight,
   CircleDot,
+  Download,
   Filter,
   MapPin,
   MoreHorizontal,
@@ -14,8 +14,6 @@ import {
   TrendingUp,
   X,
 } from "lucide-react";
-
-const PER_PAGE = 20;
 import { RunPipelineButton } from "@/features/pipeline/components/run-pipeline-button";
 import { formatStatusTier } from "@/features/opportunities/model/opportunity.selectors";
 import type {
@@ -23,6 +21,7 @@ import type {
   OpportunityStatus,
 } from "@/features/opportunities/model/opportunity.types";
 import { OpportunityDrawer } from "@/features/opportunities/components/opportunity-drawer";
+import { OpportunitiesLoadingState } from "@/features/opportunities/components/opportunities-loading-state";
 import { StatusTierBadge } from "@/features/opportunities/components/opportunity-badges";
 import { FilterPopover } from "@/features/opportunities/components/filter-popover";
 import { ScorePopover } from "@/features/opportunities/components/score-popover";
@@ -33,9 +32,13 @@ import {
   useOpportunityFilters,
   type OpportunitySortKey,
 } from "@/features/opportunities/hooks/use-opportunity-filters";
+import { Checkbox } from "@/components/ui/checkbox";
+
+const PER_PAGE = 20;
 
 export function OpportunitiesPage() {
   const [selected, setSelected] = useState<Opportunity | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   const [page, setPage] = useState(1);
   const {
     activeFilters,
@@ -63,19 +66,96 @@ export function OpportunitiesPage() {
     tiers,
   } = useOpportunityFilters();
 
-  // Reset to page 1 whenever the filtered set changes
-  useEffect(() => { setPage(1); }, [filtered.length, q, statuses, services, tiers, minScore, hotOnly]);
+  const selectedOpportunities = useMemo(
+    () => opportunities.filter((opp) => selectedIds.has(opp.id)),
+    [opportunities, selectedIds],
+  );
+
+  // Reset to page 1 whenever the filtered set changes.
+  useEffect(() => {
+    setPage(1);
+  }, [filtered.length, q, statuses, services, tiers, minScore, hotOnly]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
   const pageStart = (page - 1) * PER_PAGE;
   const paginated = filtered.slice(pageStart, pageStart + PER_PAGE);
+  const visibleIds = useMemo(() => paginated.map((opp) => opp.id), [paginated]);
+  const selectedVisibleCount = visibleIds.filter((id) =>
+    selectedIds.has(id),
+  ).length;
+  const allVisibleSelected =
+    visibleIds.length > 0 && selectedVisibleCount === visibleIds.length;
+
+  const toggleOpportunity = (id: string, checked: boolean) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  const toggleFiltered = (checked: boolean) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      visibleIds.forEach((id) => {
+        if (checked) next.add(id);
+        else next.delete(id);
+      });
+      return next;
+    });
+  };
+
+  const exportSelected = () => {
+    if (selectedOpportunities.length === 0 || typeof window === "undefined")
+      return;
+
+    const headers = [
+      "rank",
+      "name",
+      "status",
+      "status_tier",
+      "score",
+      "city",
+      "state",
+      "primary_company",
+      "revenue_opportunity",
+      "project_value",
+      "services",
+      "last_updated",
+      "source_url",
+    ];
+    const rows = selectedOpportunities.map((opp) => [
+      opp.rank,
+      opp.name,
+      opp.status,
+      formatStatusTier(opp.statusTier),
+      opp.score,
+      opp.city,
+      opp.state,
+      opp.companies[0]?.name ?? "",
+      opp.revenueOpportunity,
+      opp.projectValue,
+      opp.services.join("; "),
+      opp.lastUpdated,
+      opp.sourceUrl,
+    ]);
+    const csv = [headers, ...rows]
+      .map((row) => row.map(csvCell).join(","))
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "dealcenter-opportunities-export.csv";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
 
   if (isLoading) {
-    return (
-      <div className="min-h-[calc(100vh-56px)] bg-background flex items-center justify-center">
-        <p className="text-[13px] text-muted-foreground">Loading opportunities…</p>
-      </div>
-    );
+    return <OpportunitiesLoadingState />;
   }
 
   return (
@@ -93,6 +173,17 @@ export function OpportunitiesPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={exportSelected}
+              disabled={selectedOpportunities.length === 0}
+              className="h-8 px-3 rounded-md bg-charcoal text-white text-[12.5px] font-medium inline-flex items-center gap-1.5 hover:bg-charcoal/85 transition-colors disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed"
+            >
+              <Download className="size-3.5" />
+              Export CSV
+              {selectedOpportunities.length > 0 && (
+                <span className="num">({selectedOpportunities.length})</span>
+              )}
+            </button>
             <RunPipelineButton />
           </div>
         </div>
@@ -219,12 +310,33 @@ export function OpportunitiesPage() {
 
         {/* Results meta */}
         <div className="flex items-center justify-between text-[12px] text-muted-foreground">
+          <div className="flex items-center gap-3">
+            <div className="inline-flex items-center gap-2 text-[12px] text-muted-foreground">
+              <Checkbox
+                checked={allVisibleSelected}
+                disabled={filtered.length === 0}
+                onCheckedChange={(checked) => toggleFiltered(checked === true)}
+                aria-label="Select all visible opportunities"
+              />
+              Select visible
+            </div>
+            <div>
+              <span className="num text-foreground font-medium">
+                {selectedVisibleCount}
+              </span>{" "}
+              selected in view
+              {selectedOpportunities.length > selectedVisibleCount && (
+                <span> · {selectedOpportunities.length} total selected</span>
+              )}
+            </div>
+          </div>
           <div>
             {filtered.length > 0 && (
               <>
                 Showing{" "}
                 <span className="num text-foreground font-medium">
-                  {pageStart + 1}–{Math.min(pageStart + PER_PAGE, filtered.length)}
+                  {pageStart + 1}-
+                  {Math.min(pageStart + PER_PAGE, filtered.length)}
                 </span>{" "}
                 of{" "}
               </>
@@ -241,7 +353,13 @@ export function OpportunitiesPage() {
         {/* Cards */}
         <div className="grid grid-cols-1 gap-3">
           {paginated.map((o) => (
-            <OpportunityCard key={o.id} o={o} onOpen={() => setSelected(o)} />
+            <OpportunityCard
+              key={o.id}
+              o={o}
+              selected={selectedIds.has(o.id)}
+              onSelect={(checked) => toggleOpportunity(o.id, checked)}
+              onOpen={() => setSelected(o)}
+            />
           ))}
           {filtered.length === 0 && (
             <div className="text-center py-20 text-muted-foreground text-[13px] border border-dashed border-border rounded-lg">
@@ -292,12 +410,17 @@ export function OpportunitiesPage() {
             </button>
           </div>
         )}
-
       </div>
 
       <OpportunityDrawer opp={selected} onClose={() => setSelected(null)} />
     </div>
   );
+}
+
+function csvCell(value: string | number) {
+  const text = String(value);
+  if (/[",\n]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
+  return text;
 }
 
 /* ---------------- KPI ---------------- */
@@ -376,9 +499,13 @@ function KpiCard({
 
 function OpportunityCard({
   o,
+  selected,
+  onSelect,
   onOpen,
 }: {
   o: Opportunity;
+  selected: boolean;
+  onSelect: (checked: boolean) => void;
   onOpen: () => void;
 }) {
   const isHot = o.statusTier === "hot";
@@ -388,7 +515,9 @@ function OpportunityCard({
       className={cn(
         "group relative rounded-xl border bg-card transition-all cursor-pointer",
         "hover:border-border-strong hover:shadow-[0_2px_12px_-4px_rgba(0,0,0,0.08)]",
-        isHot ? "border-destructive/30" : "border-border",
+        selected && "border-primary/40 bg-primary/[0.025]",
+        !selected && isHot && "border-destructive/30",
+        !selected && !isHot && "border-border",
       )}
     >
       {isHot && (
@@ -398,19 +527,30 @@ function OpportunityCard({
       <div className="p-5 flex flex-col lg:flex-row gap-5">
         {/* LEFT: priority + project */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-2">
-            <StatusTierBadge tier={o.statusTier} />
-            <StatusChip status={o.status} />
-            <span className="text-[11px] text-muted-foreground">
-              · updated {formatRelative(o.lastUpdated)}
-            </span>
+          <div className="flex items-start gap-3 mb-2">
+            <Checkbox
+              checked={selected}
+              onClick={(event) => event.stopPropagation()}
+              onCheckedChange={(checked) => onSelect(checked === true)}
+              aria-label={`Select ${o.name}`}
+              className="mt-0.5"
+            />
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <StatusTierBadge tier={o.statusTier} />
+                <StatusChip status={o.status} />
+                <span className="text-[11px] text-muted-foreground">
+                  · updated {formatRelative(o.lastUpdated)}
+                </span>
+              </div>
+            </div>
           </div>
 
-          <h3 className="text-[15.5px] font-semibold text-foreground leading-snug truncate">
+          <h3 className="text-[15.5px] font-semibold text-foreground leading-snug truncate pl-7">
             {o.name}
           </h3>
 
-          <div className="mt-2 flex items-center flex-wrap gap-x-4 gap-y-1 text-[12.5px] text-muted-foreground">
+          <div className="mt-2 pl-7 flex items-center flex-wrap gap-x-4 gap-y-1 text-[12.5px] text-muted-foreground">
             <span className="inline-flex items-center gap-1.5">
               <MapPin className="size-3.5" />
               {o.city}, {o.state}
@@ -423,7 +563,7 @@ function OpportunityCard({
             )}
           </div>
 
-          <div className="mt-3 flex items-center gap-1.5">
+          <div className="mt-3 pl-7 flex items-center gap-1.5">
             {o.services.map((s) => (
               <span
                 key={s}

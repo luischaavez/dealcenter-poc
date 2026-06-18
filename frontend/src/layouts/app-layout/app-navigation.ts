@@ -1,5 +1,4 @@
 import {
-  Activity,
   LayoutDashboard,
   Settings as SettingsIcon,
   Target,
