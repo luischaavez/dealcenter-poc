@@ -1,8 +1,6 @@
 import { useMemo, useState } from "react";
-import {
-  formatStatusTier,
-  opportunities,
-} from "@/features/opportunities/model/opportunity.selectors";
+import { useLeads } from "@/lib/use-leads";
+import { formatStatusTier } from "@/features/opportunities/model/opportunity.selectors";
 import type {
   OpportunityStatus,
   Service,
@@ -12,6 +10,14 @@ import type {
 export type OpportunitySortKey = "tier" | "score" | "revenue" | "updated";
 
 export function useOpportunityFilters() {
+  const {
+    opportunities,
+    allStatuses,
+    allServices,
+    allStatusTiers,
+    isLoading,
+  } = useLeads();
+
   const [q, setQ] = useState("");
   const [statuses, setStatuses] = useState<OpportunityStatus[]>([]);
   const [services, setServices] = useState<Service[]>([]);
@@ -65,7 +71,7 @@ export function useOpportunityFilters() {
             );
         }
       });
-  }, [q, statuses, services, tiers, minScore, hotOnly, sort]);
+  }, [q, statuses, services, tiers, minScore, hotOnly, sort, opportunities]);
 
   const kpis = useMemo(() => {
     const hot = opportunities.filter((o) => o.statusTier === "hot").length;
@@ -76,7 +82,7 @@ export function useOpportunityFilters() {
       0,
     );
     return { hot, warm, updated, pipeline };
-  }, []);
+  }, [opportunities]);
 
   const activeFilters: { key: string; label: string; clear: () => void }[] = [
     ...statuses.map((status) => ({
@@ -119,11 +125,16 @@ export function useOpportunityFilters() {
 
   return {
     activeFilters,
+    allServices,
+    allStatuses,
+    allStatusTiers,
     clearAll,
     filtered,
     hotOnly,
+    isLoading,
     kpis,
     minScore,
+    opportunities,
     q,
     services,
     setHotOnly,
