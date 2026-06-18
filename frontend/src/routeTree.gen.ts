@@ -16,6 +16,8 @@ import { Route as AppSettingsRouteImport } from './routes/_app.settings'
 import { Route as AppOpportunitiesRouteImport } from './routes/_app.opportunities'
 import { Route as AppDashboardRouteImport } from './routes/_app.dashboard'
 import { Route as AppChangesRouteImport } from './routes/_app.changes'
+import { Route as AppImportsOpportunitiesRouteImport } from './routes/_app.imports.opportunities'
+import { Route as AppImportsClientsRouteImport } from './routes/_app.imports.clients'
 
 const AuthRoute = AuthRouteImport.update({
   id: '/auth',
@@ -51,6 +53,16 @@ const AppChangesRoute = AppChangesRouteImport.update({
   path: '/changes',
   getParentRoute: () => AppRoute,
 } as any)
+const AppImportsOpportunitiesRoute = AppImportsOpportunitiesRouteImport.update({
+  id: '/imports/opportunities',
+  path: '/imports/opportunities',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppImportsClientsRoute = AppImportsClientsRouteImport.update({
+  id: '/imports/clients',
+  path: '/imports/clients',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -59,6 +71,8 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof AppDashboardRoute
   '/opportunities': typeof AppOpportunitiesRoute
   '/settings': typeof AppSettingsRoute
+  '/imports/clients': typeof AppImportsClientsRoute
+  '/imports/opportunities': typeof AppImportsOpportunitiesRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -67,6 +81,8 @@ export interface FileRoutesByTo {
   '/dashboard': typeof AppDashboardRoute
   '/opportunities': typeof AppOpportunitiesRoute
   '/settings': typeof AppSettingsRoute
+  '/imports/clients': typeof AppImportsClientsRoute
+  '/imports/opportunities': typeof AppImportsOpportunitiesRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -77,6 +93,8 @@ export interface FileRoutesById {
   '/_app/dashboard': typeof AppDashboardRoute
   '/_app/opportunities': typeof AppOpportunitiesRoute
   '/_app/settings': typeof AppSettingsRoute
+  '/_app/imports/clients': typeof AppImportsClientsRoute
+  '/_app/imports/opportunities': typeof AppImportsOpportunitiesRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -87,8 +105,18 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/opportunities'
     | '/settings'
+    | '/imports/clients'
+    | '/imports/opportunities'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/auth' | '/changes' | '/dashboard' | '/opportunities' | '/settings'
+  to:
+    | '/'
+    | '/auth'
+    | '/changes'
+    | '/dashboard'
+    | '/opportunities'
+    | '/settings'
+    | '/imports/clients'
+    | '/imports/opportunities'
   id:
     | '__root__'
     | '/'
@@ -98,6 +126,8 @@ export interface FileRouteTypes {
     | '/_app/dashboard'
     | '/_app/opportunities'
     | '/_app/settings'
+    | '/_app/imports/clients'
+    | '/_app/imports/opportunities'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -157,6 +187,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppChangesRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/imports/opportunities': {
+      id: '/_app/imports/opportunities'
+      path: '/imports/opportunities'
+      fullPath: '/imports/opportunities'
+      preLoaderRoute: typeof AppImportsOpportunitiesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/imports/clients': {
+      id: '/_app/imports/clients'
+      path: '/imports/clients'
+      fullPath: '/imports/clients'
+      preLoaderRoute: typeof AppImportsClientsRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
@@ -165,6 +209,8 @@ interface AppRouteChildren {
   AppDashboardRoute: typeof AppDashboardRoute
   AppOpportunitiesRoute: typeof AppOpportunitiesRoute
   AppSettingsRoute: typeof AppSettingsRoute
+  AppImportsClientsRoute: typeof AppImportsClientsRoute
+  AppImportsOpportunitiesRoute: typeof AppImportsOpportunitiesRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -172,6 +218,8 @@ const AppRouteChildren: AppRouteChildren = {
   AppDashboardRoute: AppDashboardRoute,
   AppOpportunitiesRoute: AppOpportunitiesRoute,
   AppSettingsRoute: AppSettingsRoute,
+  AppImportsClientsRoute: AppImportsClientsRoute,
+  AppImportsOpportunitiesRoute: AppImportsOpportunitiesRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

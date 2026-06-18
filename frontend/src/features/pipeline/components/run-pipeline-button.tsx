@@ -6,8 +6,9 @@ export function RunPipelineButton() {
 
   if (isRunning) {
     const { stage, progress } = pipeline;
-    const progressLabel =
-      progress ? ` (${progress.current}/${progress.total})` : "";
+    const progressLabel = progress
+      ? ` (${progress.current}/${progress.total})`
+      : "";
     const stageLabel = stage ? `${stage}${progressLabel}` : "Running…";
 
     return (
