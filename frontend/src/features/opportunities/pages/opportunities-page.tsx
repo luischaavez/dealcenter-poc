@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   ArrowUpRight,
   Bell,
   Building2,
+  ChevronLeft,
+  ChevronRight,
   CircleDot,
   Filter,
   MapPin,
@@ -12,6 +14,8 @@ import {
   TrendingUp,
   X,
 } from "lucide-react";
+
+const PER_PAGE = 20;
 import { RunPipelineButton } from "@/features/pipeline/components/run-pipeline-button";
 import { formatStatusTier } from "@/features/opportunities/model/opportunity.selectors";
 import type {
@@ -32,6 +36,7 @@ import {
 
 export function OpportunitiesPage() {
   const [selected, setSelected] = useState<Opportunity | null>(null);
+  const [page, setPage] = useState(1);
   const {
     activeFilters,
     allServices,
@@ -57,6 +62,13 @@ export function OpportunitiesPage() {
     statuses,
     tiers,
   } = useOpportunityFilters();
+
+  // Reset to page 1 whenever the filtered set changes
+  useEffect(() => { setPage(1); }, [filtered.length, q, statuses, services, tiers, minScore, hotOnly]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
+  const pageStart = (page - 1) * PER_PAGE;
+  const paginated = filtered.slice(pageStart, pageStart + PER_PAGE);
 
   if (isLoading) {
     return (
@@ -208,20 +220,27 @@ export function OpportunitiesPage() {
         {/* Results meta */}
         <div className="flex items-center justify-between text-[12px] text-muted-foreground">
           <div>
-            Showing{" "}
+            {filtered.length > 0 && (
+              <>
+                Showing{" "}
+                <span className="num text-foreground font-medium">
+                  {pageStart + 1}–{Math.min(pageStart + PER_PAGE, filtered.length)}
+                </span>{" "}
+                of{" "}
+              </>
+            )}
             <span className="num text-foreground font-medium">
               {filtered.length}
-            </span>{" "}
-            of{" "}
-            <span className="num text-foreground font-medium">
-              {opportunities.length}
             </span>
+            {filtered.length !== opportunities.length && (
+              <span> (filtered from {opportunities.length})</span>
+            )}
           </div>
         </div>
 
         {/* Cards */}
         <div className="grid grid-cols-1 gap-3">
-          {filtered.map((o) => (
+          {paginated.map((o) => (
             <OpportunityCard key={o.id} o={o} onOpen={() => setSelected(o)} />
           ))}
           {filtered.length === 0 && (
@@ -239,6 +258,41 @@ export function OpportunitiesPage() {
             </div>
           )}
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-2 pt-2">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="size-8 rounded-md border border-border bg-card inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-40 disabled:pointer-events-none"
+            >
+              <ChevronLeft className="size-4" />
+            </button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+              <button
+                key={p}
+                onClick={() => setPage(p)}
+                className={cn(
+                  "size-8 rounded-md border text-[12.5px] font-medium num",
+                  p === page
+                    ? "border-charcoal bg-charcoal text-white"
+                    : "border-border bg-card text-muted-foreground hover:text-foreground hover:bg-secondary",
+                )}
+              >
+                {p}
+              </button>
+            ))}
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="size-8 rounded-md border border-border bg-card inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary disabled:opacity-40 disabled:pointer-events-none"
+            >
+              <ChevronRight className="size-4" />
+            </button>
+          </div>
+        )}
+
       </div>
 
       <OpportunityDrawer opp={selected} onClose={() => setSelected(null)} />

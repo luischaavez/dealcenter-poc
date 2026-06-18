@@ -23,7 +23,7 @@ import argparse
 import os
 from datetime import datetime
 
-from config import SEARCH_STATES, SEARCH_DAYS_BACK, MAX_LEADS_PER_RUN, OUTPUT_DIR
+from config import SEARCH_STATES, SEARCH_DAYS_BACK, OUTPUT_DIR
 from client import ConstructConnectClient
 from dodge_client import DodgeClient
 from dedup import deduplicate
@@ -267,12 +267,12 @@ def run_pipeline(
     _stage("Ranking qualified leads…")
     qualified = [r for r in results if r.get("ai_result", {}).get("qualifies")]
     qualified.sort(key=lambda x: x["score_result"]["final_score"], reverse=True)
-    top_leads = qualified[:MAX_LEADS_PER_RUN]
+    top_leads = qualified
 
     for i, r in enumerate(top_leads, 1):
         r["rank"] = i
 
-    print(f"  Top {len(top_leads)} leads selected")
+    print(f"  {len(top_leads)} qualified leads ranked")
 
     # ── Stage 4.5: Sonnet Summaries ────────────────────────────────────
     _stage("Generating sales briefs…", current=0, total=len(top_leads))
