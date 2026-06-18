@@ -55,14 +55,6 @@ interface Lead {
     factors: string[];
     blockers: string[];
   };
-  revenue: {
-    monthly_low: number;
-    monthly_high: number;
-    total_low: number;
-    total_high: number;
-    duration_months: number;
-    basis: string;
-  };
   // Sonnet-generated 3-paragraph sales narrative. Empty string if not yet generated.
   narrative_summary?: string;
   // Ledger change signal: "new" | "status_changed" | "updated" | null
@@ -100,7 +92,6 @@ export interface ComputedLeadsData {
     surfaced: number;
     hot: number;
     warm: number;
-    revenuePotential: number;
     recentChanges: number;
     passThroughRate: number;
   };
@@ -128,14 +119,6 @@ export interface Opportunity {
   statusTier: StatusTier;
   city: string;
   state: string;
-  projectValue: number;
-  revenueOpportunity: number;
-  revenueLow: number;
-  revenueHigh: number;
-  monthlyLow: number;
-  monthlyHigh: number;
-  durationMonths: number;
-  revenueBasis: string;
   services: Service[];
   companies: { name: string; city?: string | null }[];
   source: string;
@@ -165,8 +148,6 @@ const serviceLabels: Record<string, Service> = {
 
 const data = leadsDataJson as LeadsDataFile;
 
-const midpoint = (low: number, high: number) => Math.round((low + high) / 2);
-
 const getSourceName = (url: string) => {
   try {
     const host = new URL(url).hostname.replace(/^app\./, "");
@@ -195,17 +176,6 @@ export function computeLeadsData(payload: LeadsDataFile): ComputedLeadsData {
       statusTier: lead.project.status_tier,
       city: lead.project.location.city,
       state: lead.project.location.state,
-      projectValue: lead.project.value ?? 0,
-      revenueOpportunity: midpoint(
-        lead.revenue.total_low,
-        lead.revenue.total_high,
-      ),
-      revenueLow: lead.revenue.total_low,
-      revenueHigh: lead.revenue.total_high,
-      monthlyLow: lead.revenue.monthly_low,
-      monthlyHigh: lead.revenue.monthly_high,
-      durationMonths: lead.revenue.duration_months,
-      revenueBasis: lead.revenue.basis,
       services: lead.qualification.services.map(
         (service) => serviceLabels[service] ?? service,
       ),
@@ -305,10 +275,6 @@ export function computeLeadsData(payload: LeadsDataFile): ComputedLeadsData {
       surfaced: payload.stats.surfaced,
       hot: statusTierCounts.hot ?? 0,
       warm: statusTierCounts.warm ?? 0,
-      revenuePotential: mapped.reduce(
-        (sum, o) => sum + o.revenueOpportunity,
-        0,
-      ),
       recentChanges: mapped.filter((o) => Boolean(o.lastUpdated)).length,
       passThroughRate:
         payload.stats.ingested > 0
@@ -324,11 +290,7 @@ export function computeLeadsData(payload: LeadsDataFile): ComputedLeadsData {
       .filter((b) => b.count > 0),
     revenueByStage: statusDist.map(({ status }) => ({
       stage: status,
-      revenue: Math.round(
-        mapped
-          .filter((o) => o.status === status)
-          .reduce((sum, o) => sum + o.revenueOpportunity, 0) / 1000,
-      ),
+      revenue: 0,
     })),
     activityEvents: events,
     changeTrend: trend,
