@@ -319,13 +319,15 @@ async def upload_dodge_file(
             detail="Object storage is not configured — set STORAGE_BUCKET, STORAGE_ACCESS_KEY, STORAGE_SECRET_KEY",
         )
 
-    if not file.filename or not file.filename.endswith(".xlsx"):
-        raise HTTPException(status_code=400, detail="Only .xlsx files are accepted")
+    allowed = (".xlsx", ".csv")
+    if not file.filename or not file.filename.endswith(allowed):
+        raise HTTPException(status_code=400, detail="Only .xlsx and .csv files are accepted")
 
+    suffix = Path(file.filename).suffix.lower()
     target_date = file_date or datetime.utcnow().strftime("%Y-%m-%d")
     storage_key = f"dodge/{target_date}/{file.filename}"
 
-    with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as tmp:
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         tmp.write(await file.read())
         tmp_path = tmp.name
 

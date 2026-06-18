@@ -190,8 +190,8 @@ function ImportsPanel() {
 
   const handleFile = useCallback(
     async (file: File) => {
-      if (!file.name.endsWith(".xlsx")) {
-        toast.error("Only .xlsx files are accepted");
+      if (!file.name.endsWith(".xlsx") && !file.name.endsWith(".csv")) {
+        toast.error("Only .xlsx and .csv files are accepted");
         return;
       }
       setUploading(true);
@@ -241,7 +241,7 @@ function ImportsPanel() {
           <input
             ref={inputRef}
             type="file"
-            accept=".xlsx"
+            accept=".xlsx,.csv"
             className="hidden"
             onChange={(e) => {
               const file = e.target.files?.[0];
@@ -257,7 +257,7 @@ function ImportsPanel() {
             {uploading ? "Uploading…" : "Drop your .xlsx file here"}
           </p>
           <p className="text-[11.5px] text-muted-foreground">
-            {uploading ? "Please wait" : "or click to browse"}
+            {uploading ? "Please wait" : ".xlsx or .csv · click to browse"}
           </p>
         </div>
       </Card>
