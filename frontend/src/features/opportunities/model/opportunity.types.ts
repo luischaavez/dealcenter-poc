@@ -15,14 +15,6 @@ export interface Opportunity {
   statusTier: StatusTier;
   city: string;
   state: string;
-  projectValue: number;
-  revenueOpportunity: number;
-  revenueLow: number;
-  revenueHigh: number;
-  monthlyLow: number;
-  monthlyHigh: number;
-  durationMonths: number;
-  revenueBasis: string;
   services: Service[];
   companies: { name: string; city?: string | null }[];
   source: string;
@@ -36,7 +28,7 @@ export interface Opportunity {
   whyActionable: string[];
   blockers: string[];
   recommendedAction: string;
-  scoreBreakdown: { label: string; value: number; max: number }[];
+  scoreBreakdown: { label: string; points: number }[];
   salesBrief: string;
   alert: string | null;
   alertDetail: string | null;

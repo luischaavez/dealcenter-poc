@@ -4,7 +4,6 @@ import {
   ArrowUp,
   Flame,
   Target,
-  TrendingUp,
 } from "lucide-react";
 import {
   Bar,
@@ -30,7 +29,6 @@ import {
   opportunities,
   runStats,
 } from "@/features/opportunities/model/opportunity.selectors";
-import { formatCurrency } from "@/utils/currency";
 import { formatDateTime } from "@/utils/date";
 import {
   ScoreCell,
@@ -86,13 +84,6 @@ export function DashboardPage() {
           label="Warm opps"
           value={dashboardMetrics.warm.toString()}
           sub="Status tier"
-        />
-        <MetricCell
-          label="Revenue potential"
-          value={formatCurrency(dashboardMetrics.revenuePotential)}
-          sub="Avg. range"
-          accent="text-[oklch(0.42_0.14_240)]"
-          icon={TrendingUp}
         />
         <MetricCell
           label="Recent updates"
@@ -299,7 +290,6 @@ export function DashboardPage() {
               <th className="text-left font-medium py-2">Project</th>
               <th className="text-left font-medium py-2">Status</th>
               <th className="text-left font-medium py-2">Score</th>
-              <th className="text-right font-medium py-2 pr-1">Revenue opp.</th>
               <th className="text-left font-medium py-2 pl-3">Tier</th>
             </tr>
           </thead>
@@ -315,9 +305,6 @@ export function DashboardPage() {
                 </td>
                 <td className="py-2.5 w-[160px]">
                   <ScoreCell score={o.score} />
-                </td>
-                <td className="py-2.5 text-right num font-medium text-charcoal pr-1">
-                  {formatCurrency(o.revenueOpportunity)}
                 </td>
                 <td className="py-2.5 pl-3">
                   <StatusTierBadge tier={o.statusTier} />

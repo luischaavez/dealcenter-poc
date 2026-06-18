@@ -62,15 +62,6 @@ _STATUS_TIER = {
     "Conceptual":                  "watch",
 }
 
-_STATUS_PTS = {
-    "Under Construction":          20,
-    "Award":                       20,
-    "Sub-Bidding":                 15,
-    "GC Bidding":                  12,
-    "Pre-Construction/Negotiated": 10,
-    "Post-Bid":                     5,
-}
-
 
 # ── Plain-text output (internal) ─────────────────────────────────────────────
 
@@ -78,11 +69,6 @@ def format_executive_summary(project: dict, ai_result: dict, score_result: dict)
     """Generate a plain-text Opportunity Executive Summary for one qualified lead."""
     address = project.get("address") or {}
     location = f"{address.get('city', '')}, {address.get('state', '')} {address.get('zipcode', '')}".strip(", ")
-    revenue = ai_result.get("revenue_estimate") or {}
-    rev_range = (
-        f"${revenue.get('total_low', 0):,.0f} – ${revenue.get('total_high', 0):,.0f} "
-        f"over {revenue.get('duration_months', 0)} months"
-    )
     services = ", ".join(s.title() for s in (ai_result.get("services_needed") or []))
 
     lines = [
@@ -117,11 +103,6 @@ def format_executive_summary(project: dict, ai_result: dict, score_result: dict)
         "  SERVICES NEEDED",
         "  " + "─" * 55,
         f"    {services or 'N/A'}",
-        "",
-        "  ESTIMATED REVENUE OPPORTUNITY",
-        "  " + "─" * 55,
-        f"    {rev_range}",
-        f"    Basis: {revenue.get('assumptions', '')}",
         "",
         "  COMPANIES INVOLVED",
         "  " + "─" * 55,
@@ -204,32 +185,6 @@ def _parse_companies(company_list) -> list:
     return result
 
 
-def _score_breakdown(project: dict, ai_result: dict, score_result: dict) -> dict:
-    """
-    Reconstruct the four scoring components from existing result objects.
-    Avoids re-parsing the score_factors string list.
-    """
-    ai_score = ai_result.get("actionability_score", 0)
-    ai_pts = round(ai_score * 0.5, 1)
-
-    status_pts = _STATUS_PTS.get(project.get("projectStatus", ""), 0)
-
-    revenue = ai_result.get("revenue_estimate") or {}
-    total_high = revenue.get("total_high", 0) or 0
-    rev_pts = (15 if total_high >= 500_000 else
-               10 if total_high >= 150_000 else
-                5 if total_high >= 50_000 else 0)
-
-    final = score_result.get("final_score", 0)
-    urgency_pts = round(max(0.0, final - ai_pts - status_pts - rev_pts), 1)
-
-    return {
-        "ai":      {"points": ai_pts,       "max": 50, "label": "AI Judgment"},
-        "status":  {"points": status_pts,   "max": 20, "label": "Project Status"},
-        "urgency": {"points": urgency_pts,  "max": 15, "label": "Start Date Urgency"},
-        "revenue": {"points": rev_pts,      "max": 15, "label": "Revenue Opportunity"},
-    }
-
 
 def to_web_lead(rank: int, result: dict) -> dict:
     """Convert one pipeline result to a clean, UI-ready lead object."""
@@ -238,7 +193,6 @@ def to_web_lead(rank: int, result: dict) -> dict:
     score_result = result.get("score_result", {})
 
     address  = project.get("address") or {}
-    revenue  = ai.get("revenue_estimate") or {}
     loc_data = project.get("location") or {}
 
     lat_lng = {}
@@ -252,7 +206,7 @@ def to_web_lead(rank: int, result: dict) -> dict:
         "id":    str(project.get("projectId") or project.get("id") or ""),
         "rank":  rank,
         "score": score_result.get("final_score", 0),
-        "score_breakdown": _score_breakdown(project, ai, score_result),
+        "score_breakdown": score_result.get("score_breakdown", []),
         "project": {
             "title":              _clean(project.get("title")),
             "status":             project.get("projectStatus", ""),
@@ -283,16 +237,6 @@ def to_web_lead(rank: int, result: dict) -> dict:
             "factors":  [_clean(f) for f in (ai.get("actionability_factors") or [])],
             "blockers": [_clean(b) for b in (ai.get("actionability_blockers") or [])],
         },
-        "revenue": {
-            "monthly_low":    revenue.get("monthly_low")    or 0,
-            "monthly_high":   revenue.get("monthly_high")   or 0,
-            "total_low":      revenue.get("total_low")      or 0,
-            "total_high":     revenue.get("total_high")     or 0,
-            "duration_months":revenue.get("duration_months") or 0,
-            "basis":          _clean(revenue.get("assumptions")),
-        },
-        # Sonnet-generated narrative sales brief (3 paragraphs, ~150 words).
-        # Empty string if not yet generated (dry-run, older data, or Sonnet error).
         "narrative_summary": _clean(result.get("narrative_summary", "")),
 
         # Ledger alert: what changed since the last run this project appeared in.

@@ -15,7 +15,6 @@ Pipeline stages:
   2.5 Memory Check — ledger lookup: new / cached / changed
   3  AI Qualify   — Haiku on new+changed projects only
   4  Score & Rank — composite 0-100 score
-  4.5 Summaries  — Sonnet sales briefs for top 20
   5  Output       — JSON files + SQLite
 """
 
@@ -31,7 +30,6 @@ from filters import apply_hard_filters
 from qualifier import qualify_project
 from scorer import score_project
 from formatter import print_leaderboard, save_results, save_web_output
-from summarizer import generate_summary
 from ledger import check_project, update_project, save_run, save_leads, get_todays_dodge_upload
 
 
@@ -274,25 +272,24 @@ def run_pipeline(
 
     print(f"  {len(top_leads)} qualified leads ranked")
 
-    # ── Stage 4.5: Sonnet Summaries ────────────────────────────────────
-    _stage("Generating sales briefs…", current=0, total=len(top_leads))
-
-    for i, r in enumerate(top_leads, 1):
-        if on_progress:
-            on_progress("Generating sales briefs", i, len(top_leads))
-        title_short = (r["project"].get("title") or "N/A")[:50]
-        if r.get("alert") is None and r.get("narrative_summary"):
-            print(f"  [{i:2d}/{len(top_leads)}]  {title_short:<52}  (cached)")
-            continue
-        print(f"  [{i:2d}/{len(top_leads)}]  {title_short:<52}", end="  ", flush=True)
-        try:
-            r["narrative_summary"] = generate_summary(
-                r["project"], r["ai_result"], r["score_result"]
-            )
-            print("✓")
-        except Exception as exc:
-            print(f"ERROR  {exc}")
-            r["narrative_summary"] = ""
+    # ── Stage 4.5: Sonnet Summaries (disabled — not used in current UI) ──
+    # Uncomment to re-enable narrative sales brief generation via Sonnet.
+    # for i, r in enumerate(top_leads, 1):
+    #     if on_progress:
+    #         on_progress("Generating sales briefs", i, len(top_leads))
+    #     title_short = (r["project"].get("title") or "N/A")[:50]
+    #     if r.get("alert") is None and r.get("narrative_summary"):
+    #         print(f"  [{i:2d}/{len(top_leads)}]  {title_short:<52}  (cached)")
+    #         continue
+    #     print(f"  [{i:2d}/{len(top_leads)}]  {title_short:<52}", end="  ", flush=True)
+    #     try:
+    #         r["narrative_summary"] = generate_summary(
+    #             r["project"], r["ai_result"], r["score_result"]
+    #         )
+    #         print("✓")
+    #     except Exception as exc:
+    #         print(f"ERROR  {exc}")
+    #         r["narrative_summary"] = ""
 
     # ── Stage 5: Output ────────────────────────────────────────────────
     _stage("Saving output…")

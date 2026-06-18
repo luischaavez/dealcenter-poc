@@ -11,7 +11,6 @@ import {
   MoreHorizontal,
   Search,
   Sparkles,
-  TrendingUp,
   X,
 } from "lucide-react";
 import { RunPipelineButton } from "@/features/pipeline/components/run-pipeline-button";
@@ -25,7 +24,6 @@ import { OpportunitiesLoadingState } from "@/features/opportunities/components/o
 import { StatusTierBadge } from "@/features/opportunities/components/opportunity-badges";
 import { FilterPopover } from "@/features/opportunities/components/filter-popover";
 import { ScorePopover } from "@/features/opportunities/components/score-popover";
-import { formatCurrency } from "@/utils/currency";
 import { formatRelative } from "@/utils/date";
 import { cn } from "@/utils/cn";
 import {
@@ -119,8 +117,6 @@ export function OpportunitiesPage() {
       "city",
       "state",
       "primary_company",
-      "revenue_opportunity",
-      "project_value",
       "services",
       "last_updated",
       "source_url",
@@ -134,8 +130,6 @@ export function OpportunitiesPage() {
       opp.city,
       opp.state,
       opp.companies[0]?.name ?? "",
-      opp.revenueOpportunity,
-      opp.projectValue,
       opp.services.join("; "),
       opp.lastUpdated,
       opp.sourceUrl,
@@ -189,7 +183,7 @@ export function OpportunitiesPage() {
         </div>
 
         {/* KPI cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="grid grid-cols-3 gap-3">
           <KpiCard
             tone="critical"
             icon={<Sparkles className="size-4" />}
@@ -210,14 +204,6 @@ export function OpportunitiesPage() {
             label="Tracked opportunities"
             value={kpis.updated}
             hint="Latest run"
-          />
-          <KpiCard
-            tone="success"
-            icon={<TrendingUp className="size-4" />}
-            label="Pipeline revenue"
-            value={formatCurrency(kpis.pipeline)}
-            hint="Across all tracked"
-            big
           />
         </div>
 
@@ -280,7 +266,6 @@ export function OpportunitiesPage() {
               >
                 <option value="tier">Status tier</option>
                 <option value="score">Match score</option>
-                <option value="revenue">Revenue opportunity</option>
                 <option value="updated">Last updated</option>
               </select>
             </div>
@@ -431,14 +416,12 @@ function KpiCard({
   label,
   value,
   hint,
-  big,
 }: {
   tone: "critical" | "info" | "neutral" | "success";
   icon: React.ReactNode;
   label: string;
   value: number | string;
   hint: string;
-  big?: boolean;
 }) {
   const tones = {
     critical: {
@@ -482,10 +465,7 @@ function KpiCard({
       </div>
       <div className="mt-3">
         <div
-          className={cn(
-            "font-semibold tabular-nums text-foreground tracking-tight",
-            big ? "text-[26px]" : "text-[28px]",
-          )}
+          className="font-semibold tabular-nums text-foreground tracking-tight text-[28px]"
         >
           {value}
         </div>
@@ -572,24 +552,6 @@ function OpportunityCard({
                 {s}
               </span>
             ))}
-          </div>
-        </div>
-
-        {/* MIDDLE: revenue */}
-        <div className="lg:w-[180px] lg:border-l lg:border-border lg:pl-5 flex lg:flex-col gap-4 lg:gap-1 items-baseline lg:items-start">
-          <div>
-            <div className="text-[10.5px] uppercase tracking-wider text-muted-foreground">
-              Revenue opportunity
-            </div>
-            <div className="text-[22px] font-semibold tabular-nums text-foreground tracking-tight leading-none mt-1">
-              {formatCurrency(o.revenueOpportunity)}
-            </div>
-            <div className="text-[11.5px] text-muted-foreground mt-1.5">
-              Project value ·{" "}
-              <span className="text-foreground/80 num">
-                {formatCurrency(o.projectValue)}
-              </span>
-            </div>
           </div>
         </div>
 

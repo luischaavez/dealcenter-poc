@@ -2,8 +2,6 @@ import type { Opportunity } from "@/features/opportunities/model/opportunity.typ
 import { serviceLabels } from "@/features/opportunities/model/opportunity.constants";
 import type { Lead } from "./leads.types";
 
-const midpoint = (low: number, high: number) => Math.round((low + high) / 2);
-
 const getSourceName = (url: string) => {
   try {
     const host = new URL(url).hostname.replace(/^app\./, "");
@@ -27,17 +25,6 @@ export function adaptLead(lead: Lead): Opportunity {
     statusTier: lead.project.status_tier,
     city: lead.project.location.city,
     state: lead.project.location.state,
-    projectValue: lead.project.value ?? 0,
-    revenueOpportunity: midpoint(
-      lead.revenue.total_low,
-      lead.revenue.total_high,
-    ),
-    revenueLow: lead.revenue.total_low,
-    revenueHigh: lead.revenue.total_high,
-    monthlyLow: lead.revenue.monthly_low,
-    monthlyHigh: lead.revenue.monthly_high,
-    durationMonths: lead.revenue.duration_months,
-    revenueBasis: lead.revenue.basis,
     services: lead.qualification.services.map(
       (service) => serviceLabels[service] ?? service,
     ),
@@ -53,10 +40,9 @@ export function adaptLead(lead: Lead): Opportunity {
     whyActionable: lead.qualification.factors,
     blockers: lead.qualification.blockers,
     recommendedAction: lead.qualification.recommended_action,
-    scoreBreakdown: Object.values(lead.score_breakdown).map((part) => ({
-      label: part.label,
-      value: part.points,
-      max: part.max,
+    scoreBreakdown: lead.score_breakdown.map((factor) => ({
+      label: factor.label,
+      points: factor.points,
     })),
     salesBrief: lead.narrative_summary ?? "",
     alert: lead.alert ?? null,

@@ -163,21 +163,26 @@ function DrawerBody({ opp, onClose }: { opp: Opportunity; onClose: () => void })
         {/* ── SECTION 3: SCORE BREAKDOWN ──────────────────────────────── */}
         {opp.scoreBreakdown.length > 0 && (
           <Section title="Score breakdown">
-            <div className="rounded-lg border border-border bg-card p-4 space-y-3">
-              {opp.scoreBreakdown.map((s) => (
-                <div key={s.label}>
-                  <div className="flex justify-between text-[11.5px] mb-1">
-                    <span className="text-charcoal/80">{s.label}</span>
-                    <span className="num font-medium text-charcoal">{s.value}/{s.max}</span>
-                  </div>
-                  <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-charcoal rounded-full"
-                      style={{ width: `${(s.value / s.max) * 100}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
+            <div className="rounded-lg border border-border bg-card p-4">
+              <div className="flex items-center justify-between pb-3 mb-3 border-b border-border">
+                <span className="text-[12px] text-muted-foreground">Total opportunity score</span>
+                <span className="text-[14px] font-semibold num text-charcoal">
+                  {opp.score}<span className="text-muted-foreground font-normal">/100</span>
+                </span>
+              </div>
+              <ul className="space-y-2.5">
+                {opp.scoreBreakdown.map((s) => (
+                  <li key={s.label} className="flex items-center justify-between text-[12.5px]">
+                    <div className="flex items-center gap-2">
+                      <span className="size-4 rounded-full bg-[oklch(0.62_0.13_155/0.15)] flex items-center justify-center shrink-0">
+                        <Check className="size-2.5 text-[oklch(0.42_0.13_155)]" strokeWidth={3} />
+                      </span>
+                      <span className="text-charcoal/90">{s.label}</span>
+                    </div>
+                    <span className="num font-medium text-charcoal">+{s.points}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
           </Section>
         )}
