@@ -91,7 +91,8 @@ def run_pipeline(
         if upload_record:
             from storage import download, is_configured
             if is_configured():
-                tmp_path = "/tmp/dodge_import.xlsx"
+                ext = os.path.splitext(upload_record.filename)[1] or ".xlsx"
+                tmp_path = f"/tmp/dodge_import{ext}"
                 try:
                     download(upload_record.storage_key, tmp_path)
                     effective_dodge_path = tmp_path
