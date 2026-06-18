@@ -23,7 +23,7 @@ import argparse
 import os
 from datetime import datetime
 
-from config import SEARCH_STATES, SEARCH_DAYS_BACK, MAX_LEADS_PER_RUN, OUTPUT_DIR
+from config import SEARCH_STATES, SEARCH_DAYS_BACK, OUTPUT_DIR
 from client import ConstructConnectClient
 from dodge_client import DodgeClient
 from dedup import deduplicate
@@ -32,7 +32,7 @@ from qualifier import qualify_project
 from scorer import score_project
 from formatter import print_leaderboard, save_results, save_web_output
 from summarizer import generate_summary
-from ledger import check_project, update_project, save_run, save_leads
+from ledger import check_project, update_project, save_run, save_leads, get_todays_dodge_upload
 
 
 def run_pipeline(
@@ -84,8 +84,27 @@ def run_pipeline(
         print("  Continuing without CC data.")
 
     # ── Stage 1b: Ingest from Dodge (optional) ────────────────────────
+    # Priority: --dodge arg → DODGE_EXCEL_PATH env → today's upload in DB
     dodge_projects = []
     effective_dodge_path = dodge_path or os.environ.get("DODGE_EXCEL_PATH")
+
+    if not effective_dodge_path:
+        upload_record = get_todays_dodge_upload()
+        if upload_record:
+            from storage import download, is_configured
+            if is_configured():
+                tmp_path = "/tmp/dodge_import.xlsx"
+                try:
+                    download(upload_record.storage_key, tmp_path)
+                    effective_dodge_path = tmp_path
+                    print(f"\nStage 1b  Found today's Dodge upload: {upload_record.filename}")
+                except Exception as exc:
+                    print(f"\nStage 1b  WARNING: Could not download Dodge file — {exc}")
+            else:
+                print("\nStage 1b  Dodge upload found in DB but STORAGE_* vars not configured — skipping")
+        else:
+            print(f"\nStage 1b  No Dodge file for today — skipping")
+
     if effective_dodge_path:
         _stage(f"Importing Dodge: {effective_dodge_path}")
         try:
@@ -93,8 +112,6 @@ def run_pipeline(
             print(f"  Imported: {len(dodge_projects):,} Dodge projects")
         except Exception as exc:
             print(f"  WARNING: Dodge import failed — {exc}")
-    else:
-        print("\nStage 1b  Dodge import skipped (no --dodge path or DODGE_EXCEL_PATH)")
 
     if not cc_projects and not dodge_projects:
         print("\nNo projects ingested from any source — aborting.")
@@ -250,12 +267,12 @@ def run_pipeline(
     _stage("Ranking qualified leads…")
     qualified = [r for r in results if r.get("ai_result", {}).get("qualifies")]
     qualified.sort(key=lambda x: x["score_result"]["final_score"], reverse=True)
-    top_leads = qualified[:MAX_LEADS_PER_RUN]
+    top_leads = qualified
 
     for i, r in enumerate(top_leads, 1):
         r["rank"] = i
 
-    print(f"  Top {len(top_leads)} leads selected")
+    print(f"  {len(top_leads)} qualified leads ranked")
 
     # ── Stage 4.5: Sonnet Summaries ────────────────────────────────────
     _stage("Generating sales briefs…", current=0, total=len(top_leads))

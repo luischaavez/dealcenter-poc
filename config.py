@@ -105,5 +105,4 @@ SEARCH_DAYS_BACK = int(os.getenv("SEARCH_DAYS_BACK", "90"))
 
 # --- Output ---
 OUTPUT_DIR = "output"
-MAX_LEADS_PER_RUN = int(os.getenv("MAX_LEADS_PER_RUN", "20"))
 

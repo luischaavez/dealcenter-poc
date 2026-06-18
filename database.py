@@ -132,6 +132,23 @@ class Lead(Base):
     project_snapshot  = Column(Text)                 # full raw project JSON at pipeline run time
 
 
+class DodgeUpload(Base):
+    """
+    Registry of Dodge Excel files stored in cloud object storage.
+
+    The pipeline checks this table for a file whose file_date matches
+    today's date. If found, it downloads from storage and runs Dodge ingest.
+    file_date is stored as YYYY-MM-DD string for simple equality queries.
+    """
+    __tablename__ = "dodge_uploads"
+
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    file_date   = Column(String, index=True)   # "YYYY-MM-DD" — date this export covers
+    uploaded_at = Column(DateTime)             # when the record was created
+    storage_key = Column(String)               # key/path inside the bucket
+    filename    = Column(String)               # original filename at upload time
+
+
 def get_db() -> Session:
     """Return a new SQLAlchemy 2.0 Session. Use as a context manager."""
     return Session(ENGINE)
