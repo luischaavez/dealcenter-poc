@@ -7,7 +7,7 @@ import type {
   StatusTier,
 } from "@/features/opportunities/model/opportunity.types";
 
-export type OpportunitySortKey = "tier" | "score" | "revenue" | "updated";
+export type OpportunitySortKey = "tier" | "score" | "updated";
 
 export function useOpportunityFilters() {
   const {
@@ -62,8 +62,6 @@ export function useOpportunityFilters() {
             );
           case "score":
             return b.score - a.score;
-          case "revenue":
-            return b.revenueOpportunity - a.revenueOpportunity;
           case "updated":
             return (
               new Date(b.lastUpdated).getTime() -
@@ -77,11 +75,7 @@ export function useOpportunityFilters() {
     const hot = opportunities.filter((o) => o.statusTier === "hot").length;
     const warm = opportunities.filter((o) => o.statusTier === "warm").length;
     const updated = opportunities.length;
-    const pipeline = opportunities.reduce(
-      (sum, opportunity) => sum + opportunity.revenueOpportunity,
-      0,
-    );
-    return { hot, warm, updated, pipeline };
+    return { hot, warm, updated };
   }, [opportunities]);
 
   const activeFilters: { key: string; label: string; clear: () => void }[] = [

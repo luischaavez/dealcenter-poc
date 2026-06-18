@@ -46,14 +46,6 @@ export interface Lead {
     factors: string[];
     blockers: string[];
   };
-  revenue: {
-    monthly_low: number;
-    monthly_high: number;
-    total_low: number;
-    total_high: number;
-    duration_months: number;
-    basis: string;
-  };
   narrative_summary?: string;
   alert?: string | null;
   alert_detail?: string | null;

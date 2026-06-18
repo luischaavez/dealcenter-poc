@@ -25,7 +25,6 @@ FTDS REVENUE MODEL: Monthly rentals per unit. Typical engagement = 6–24 months
 YOUR JOB: For each construction project, determine:
 1. Whether it physically requires FTDS's services
 2. How actionable it is RIGHT NOW
-3. Estimated revenue opportunity
 
 ACTIONABILITY SIGNALS (weighted):
 HIGH WEIGHT:
@@ -46,11 +45,6 @@ DISQUALIFYING:
   - Pure service/maintenance work (no physical construction debris)
   - Project on hold, cancelled, or explicitly deferred
 
-REVENUE ESTIMATION:
-Use construction value and type to estimate units. Be conservative.
-  $50M+   → 20-40 dumpsters, 20-40 toilets, 5-10 washouts, 18-24 months
-  $20-50M → 10-20 dumpsters, 10-20 toilets, 3-6 washouts, 12-18 months
-  $5-20M  → 3-10 dumpsters, 3-10 toilets, 1-3 washouts, 6-12 months
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 CRITICAL: CONSTRUCTCONNECT STATUS DEFINITIONS
@@ -149,14 +143,6 @@ _RESPONSE_SCHEMA = """{
   "actionability_factors": ["list of positive factors found"],
   "actionability_blockers": ["list of blockers, or empty list"],
   "budget_pricing_requested": true | false  (true if negotiated/design-build method or GC is requesting early vendor pricing),
-  "revenue_estimate": {
-    "monthly_low": number,
-    "monthly_high": number,
-    "duration_months": number,
-    "total_low": number,
-    "total_high": number,
-    "assumptions": "brief one-sentence explanation"
-  },
   "why_actionable": "1-2 sentence explanation of why (or why not) to pursue now",
   "recommended_action": "What FTDS should do and when — be specific",
   "qualification_confidence": 0.0-1.0  (your confidence in this qualification decision: 1.0=certain, 0.5=uncertain)

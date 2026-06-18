@@ -13,10 +13,6 @@ export const dashboardMetrics = {
   surfaced: runStats.surfaced,
   hot: statusTierCounts.hot ?? 0,
   warm: statusTierCounts.warm ?? 0,
-  revenuePotential: opportunities.reduce(
-    (sum, opp) => sum + opp.revenueOpportunity,
-    0,
-  ),
   recentChanges: opportunities.filter((opp) => Boolean(opp.lastUpdated)).length,
   passThroughRate:
     runStats.ingested > 0 ? runStats.filtered / runStats.ingested : 0,
@@ -45,9 +41,5 @@ export const pipelineByScore = scoreBuckets
 
 export const revenueByStage = statusDistribution.map(({ status }) => ({
   stage: status,
-  revenue: Math.round(
-    opportunities
-      .filter((opp) => opp.status === status)
-      .reduce((sum, opp) => sum + opp.revenueOpportunity, 0) / 1000,
-  ),
+  revenue: 0,
 }));

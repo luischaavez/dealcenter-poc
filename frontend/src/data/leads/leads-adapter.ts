@@ -2,8 +2,6 @@ import type { Opportunity } from "@/features/opportunities/model/opportunity.typ
 import { serviceLabels } from "@/features/opportunities/model/opportunity.constants";
 import type { Lead } from "./leads.types";
 
-const midpoint = (low: number, high: number) => Math.round((low + high) / 2);
-
 const getSourceName = (url: string) => {
   try {
     const host = new URL(url).hostname.replace(/^app\./, "");
@@ -27,17 +25,6 @@ export function adaptLead(lead: Lead): Opportunity {
     statusTier: lead.project.status_tier,
     city: lead.project.location.city,
     state: lead.project.location.state,
-    projectValue: lead.project.value ?? 0,
-    revenueOpportunity: midpoint(
-      lead.revenue.total_low,
-      lead.revenue.total_high,
-    ),
-    revenueLow: lead.revenue.total_low,
-    revenueHigh: lead.revenue.total_high,
-    monthlyLow: lead.revenue.monthly_low,
-    monthlyHigh: lead.revenue.monthly_high,
-    durationMonths: lead.revenue.duration_months,
-    revenueBasis: lead.revenue.basis,
     services: lead.qualification.services.map(
       (service) => serviceLabels[service] ?? service,
     ),
