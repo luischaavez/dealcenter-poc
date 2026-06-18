@@ -21,6 +21,7 @@ import type {
   OpportunityStatus,
 } from "@/features/opportunities/model/opportunity.types";
 import { OpportunityDrawer } from "@/features/opportunities/components/opportunity-drawer";
+import { OpportunitiesLoadingState } from "@/features/opportunities/components/opportunities-loading-state";
 import { StatusTierBadge } from "@/features/opportunities/components/opportunity-badges";
 import { FilterPopover } from "@/features/opportunities/components/filter-popover";
 import { ScorePopover } from "@/features/opportunities/components/score-popover";
@@ -154,13 +155,7 @@ export function OpportunitiesPage() {
   };
 
   if (isLoading) {
-    return (
-      <div className="min-h-[calc(100vh-56px)] bg-background flex items-center justify-center">
-        <p className="text-[13px] text-muted-foreground">
-          Loading opportunities…
-        </p>
-      </div>
-    );
+    return <OpportunitiesLoadingState />;
   }
 
   return (
