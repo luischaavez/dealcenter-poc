@@ -11,17 +11,17 @@ export type Service =
 
 type RawService = "dumpster" | "toilet" | "washout" | string;
 
-interface LeadScorePart {
-  points: number;
-  max: number;
+interface LeadScoreFactor {
+  id: string;
   label: string;
+  points: number;
 }
 
 interface Lead {
   id: string;
   rank: number;
   score: number;
-  score_breakdown: Record<string, LeadScorePart>;
+  score_breakdown: LeadScoreFactor[];
   project: {
     title: string;
     status: string;
@@ -149,7 +149,7 @@ export interface Opportunity {
   whyActionable: string[];
   blockers: string[];
   recommendedAction: string;
-  scoreBreakdown: { label: string; value: number; max: number }[];
+  scoreBreakdown: { label: string; points: number }[];
   // Sonnet-generated 3-paragraph sales narrative (~150 words)
   salesBrief: string;
   // Ledger alert for this run
@@ -221,10 +221,9 @@ export function computeLeadsData(payload: LeadsDataFile): ComputedLeadsData {
       whyActionable: lead.qualification.factors,
       blockers: lead.qualification.blockers,
       recommendedAction: lead.qualification.recommended_action,
-      scoreBreakdown: Object.values(lead.score_breakdown).map((part) => ({
-        label: part.label,
-        value: part.points,
-        max: part.max,
+      scoreBreakdown: lead.score_breakdown.map((factor) => ({
+        label: factor.label,
+        points: factor.points,
       })),
       salesBrief: lead.narrative_summary ?? "",
       alert: lead.alert ?? null,

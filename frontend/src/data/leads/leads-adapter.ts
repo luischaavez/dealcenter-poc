@@ -40,10 +40,9 @@ export function adaptLead(lead: Lead): Opportunity {
     whyActionable: lead.qualification.factors,
     blockers: lead.qualification.blockers,
     recommendedAction: lead.qualification.recommended_action,
-    scoreBreakdown: Object.values(lead.score_breakdown).map((part) => ({
-      label: part.label,
-      value: part.points,
-      max: part.max,
+    scoreBreakdown: lead.score_breakdown.map((factor) => ({
+      label: factor.label,
+      points: factor.points,
     })),
     salesBrief: lead.narrative_summary ?? "",
     alert: lead.alert ?? null,

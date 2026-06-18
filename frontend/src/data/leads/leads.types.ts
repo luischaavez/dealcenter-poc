@@ -2,17 +2,17 @@ import type { StatusTier } from "@/features/opportunities/model/opportunity.type
 
 type RawService = "dumpster" | "toilet" | "washout" | string;
 
-interface LeadScorePart {
-  points: number;
-  max: number;
+interface LeadScoreFactor {
+  id: string;
   label: string;
+  points: number;
 }
 
 export interface Lead {
   id: string;
   rank: number;
   score: number;
-  score_breakdown: Record<string, LeadScorePart>;
+  score_breakdown: LeadScoreFactor[];
   project: {
     title: string;
     status: string;

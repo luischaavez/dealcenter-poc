@@ -62,15 +62,6 @@ _STATUS_TIER = {
     "Conceptual":                  "watch",
 }
 
-_STATUS_PTS = {
-    "Under Construction":          20,
-    "Award":                       20,
-    "Sub-Bidding":                 15,
-    "GC Bidding":                  12,
-    "Pre-Construction/Negotiated": 10,
-    "Post-Bid":                     5,
-}
-
 
 # ── Plain-text output (internal) ─────────────────────────────────────────────
 
@@ -194,25 +185,6 @@ def _parse_companies(company_list) -> list:
     return result
 
 
-def _score_breakdown(project: dict, ai_result: dict, score_result: dict) -> dict:
-    """
-    Reconstruct the four scoring components from existing result objects.
-    Avoids re-parsing the score_factors string list.
-    """
-    ai_score = ai_result.get("actionability_score", 0)
-    ai_pts = round(ai_score * 0.5, 1)
-
-    status_pts = _STATUS_PTS.get(project.get("projectStatus", ""), 0)
-
-    final = score_result.get("final_score", 0)
-    urgency_pts = round(max(0.0, final - ai_pts - status_pts), 1)
-
-    return {
-        "ai":      {"points": ai_pts,       "max": 50, "label": "AI Judgment"},
-        "status":  {"points": status_pts,   "max": 20, "label": "Project Status"},
-        "urgency": {"points": urgency_pts,  "max": 30, "label": "Start Date & Urgency"},
-    }
-
 
 def to_web_lead(rank: int, result: dict) -> dict:
     """Convert one pipeline result to a clean, UI-ready lead object."""
@@ -234,7 +206,7 @@ def to_web_lead(rank: int, result: dict) -> dict:
         "id":    str(project.get("projectId") or project.get("id") or ""),
         "rank":  rank,
         "score": score_result.get("final_score", 0),
-        "score_breakdown": _score_breakdown(project, ai, score_result),
+        "score_breakdown": score_result.get("score_breakdown", []),
         "project": {
             "title":              _clean(project.get("title")),
             "status":             project.get("projectStatus", ""),
