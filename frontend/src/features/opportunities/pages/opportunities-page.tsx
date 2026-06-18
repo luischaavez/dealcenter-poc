@@ -13,13 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { RunPipelineButton } from "@/features/pipeline/components/run-pipeline-button";
-import {
-  allServices,
-  allStatuses,
-  allStatusTiers,
-  formatStatusTier,
-  opportunities,
-} from "@/features/opportunities/model/opportunity.selectors";
+import { formatStatusTier } from "@/features/opportunities/model/opportunity.selectors";
 import type {
   Opportunity,
   OpportunityStatus,
@@ -40,11 +34,16 @@ export function OpportunitiesPage() {
   const [selected, setSelected] = useState<Opportunity | null>(null);
   const {
     activeFilters,
+    allServices,
+    allStatuses,
+    allStatusTiers,
     clearAll,
     filtered,
     hotOnly,
+    isLoading,
     kpis,
     minScore,
+    opportunities,
     q,
     services,
     setHotOnly,
@@ -58,6 +57,14 @@ export function OpportunitiesPage() {
     statuses,
     tiers,
   } = useOpportunityFilters();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-[calc(100vh-56px)] bg-background flex items-center justify-center">
+        <p className="text-[13px] text-muted-foreground">Loading opportunities…</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-[calc(100vh-56px)] bg-background">
