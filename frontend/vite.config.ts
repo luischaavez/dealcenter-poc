@@ -12,8 +12,7 @@ export default defineConfig({
     // nitro/vite builds from this
     server: { entry: "server" },
   },
-  // Enable Nitro with Vercel preset for deployment.
-  // NITRO_PRESET env var (set in Vercel project settings) will override this
-  // to allow switching targets without touching source code.
-  nitro: { preset: "vercel" },
+  // Enable Nitro with Netlify preset for deployment.
+  // NITRO_PRESET env var can override this to switch targets without touching source code.
+  nitro: { preset: "netlify" },
 });
