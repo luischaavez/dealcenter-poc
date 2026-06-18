@@ -1,5 +1,11 @@
 import { useState, useRef, useCallback } from "react";
-import { Info, Upload, FileSpreadsheet, CheckCircle2, Loader2 } from "lucide-react";
+import {
+  Info,
+  Upload,
+  FileSpreadsheet,
+  CheckCircle2,
+  Loader2,
+} from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { fetchDodgeUploads, uploadDodgeFile } from "@/lib/api";
@@ -53,6 +59,7 @@ export function SettingsPage() {
         <div className="flex-1 min-w-0 space-y-5">
           {tab === "sources" && <SourcesPanel />}
           {tab === "imports" && <ImportsPanel />}
+          {tab === "customer-imports" && <CustomerImportsPanel />}
           {tab === "scoring" && <ScoringPanel />}
           {tab === "notifications" && <NotificationsPanel />}
           {tab === "users" && <UsersPanel />}
@@ -226,7 +233,10 @@ function ImportsPanel() {
         subtitle="The pipeline automatically uses the file uploaded on the day it runs"
       >
         <div
-          onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragging(true);
+          }}
           onDragLeave={() => setDragging(false)}
           onDrop={onDrop}
           onClick={() => !uploading && inputRef.current?.click()}
@@ -262,10 +272,7 @@ function ImportsPanel() {
         </div>
       </Card>
 
-      <Card
-        title="Upload history"
-        subtitle="Files available in object storage"
-      >
+      <Card title="Upload history" subtitle="Files available in object storage">
         {isLoading ? (
           <div className="flex items-center gap-2 py-4 text-[12.5px] text-muted-foreground">
             <Loader2 className="size-3.5 animate-spin" /> Loading…
@@ -295,6 +302,109 @@ function ImportsPanel() {
         )}
       </Card>
     </>
+  );
+}
+
+function CustomerImportsPanel() {
+  const mockRows = [
+    {
+      id: "customer-1",
+      name: "Brightline Builders",
+      contact: "Maya Torres",
+      market: "Austin",
+      status: "Ready",
+    },
+    {
+      id: "customer-2",
+      name: "Westward GC Partners",
+      contact: "Missing",
+      market: "San Antonio",
+      status: "Review",
+    },
+    {
+      id: "customer-3",
+      name: "Summit Civic Construction",
+      contact: "Andre Hill",
+      market: "Dallas",
+      status: "Duplicate",
+    },
+  ];
+
+  return (
+    <>
+      <Card
+        title="Upload customer list"
+        subtitle="Mock workflow for importing customers used by opportunity matching"
+      >
+        <div className="rounded-md border border-dashed border-border bg-background px-6 py-8">
+          <div className="flex flex-col items-center justify-center text-center gap-2">
+            <Upload className="size-7 text-muted-foreground" />
+            <p className="text-[13px] font-medium text-charcoal">
+              Drop a customer .xlsx or .csv file here
+            </p>
+            <p className="text-[11.5px] text-muted-foreground">
+              Mock-only import preview. No customer records are created yet.
+            </p>
+            <button className="mt-2 h-9 px-3 rounded-md bg-charcoal text-white text-[12.5px] font-medium hover:bg-charcoal/85">
+              Browse file
+            </button>
+          </div>
+        </div>
+      </Card>
+
+      <Card title="Preview" subtitle="Example rows from a customer import file">
+        <div className="overflow-auto">
+          <table className="w-full text-[12.5px]">
+            <thead className="text-[10.5px] uppercase tracking-wider text-muted-foreground">
+              <tr className="border-b border-border">
+                <th className="text-left font-medium py-2 pr-3">Customer</th>
+                <th className="text-left font-medium py-2 px-3">Contact</th>
+                <th className="text-left font-medium py-2 px-3">Market</th>
+                <th className="text-right font-medium py-2 pl-3">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {mockRows.map((row) => (
+                <tr key={row.id} className="hover:bg-secondary/40">
+                  <td className="py-2.5 pr-3 font-medium text-charcoal">
+                    {row.name}
+                  </td>
+                  <td className="py-2.5 px-3 text-foreground/85">
+                    {row.contact}
+                  </td>
+                  <td className="py-2.5 px-3 text-muted-foreground">
+                    {row.market}
+                  </td>
+                  <td className="py-2.5 pl-3 text-right">
+                    <ImportStateBadge status={row.status} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </>
+  );
+}
+
+function ImportStateBadge({ status }: { status: string }) {
+  const styles =
+    status === "Ready"
+      ? "bg-[oklch(0.62_0.13_155/0.12)] text-[oklch(0.4_0.13_155)] border-[oklch(0.62_0.13_155/0.3)]"
+      : status === "Review"
+        ? "bg-[oklch(0.72_0.15_70/0.13)] text-[oklch(0.42_0.15_70)] border-[oklch(0.72_0.15_70/0.3)]"
+        : "bg-[oklch(0.605_0.21_28/0.10)] text-[oklch(0.5_0.21_28)] border-[oklch(0.605_0.21_28/0.3)]";
+
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center h-5 px-1.5 rounded text-[10.5px] font-medium border tracking-wide whitespace-nowrap",
+        styles,
+      )}
+    >
+      {status}
+    </span>
   );
 }
 
