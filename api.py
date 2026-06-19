@@ -13,6 +13,8 @@ Endpoints
   POST /pipeline/run          → trigger a pipeline run (non-blocking)
   POST /dodge/upload          → upload a Dodge Excel file to object storage + register in DB
   GET  /dodge/uploads         → list all registered Dodge uploads
+  POST /customers/import      → import customer contacts from a CSV file
+  GET  /customers/imports     → list customer imports with preview rows
 """
 
 import json
@@ -27,7 +29,7 @@ from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import desc
 
-from database import get_db, Run, Lead, DodgeUpload
+from database import get_db, Run, Lead, DodgeUpload, CustomerImport
 from formatter import to_web_lead
 
 # Path to the pre-generated JSON file (written by formatter.save_web_output)
@@ -155,9 +157,11 @@ def _make_cors_origins() -> list[str]:
     # Always include common localhost dev variants
     dev_extras = [
         "http://localhost:3000",
+        "http://localhost:8080",
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:3000",
+        "http://127.0.0.1:8080",
     ]
     for extra in dev_extras:
         if extra not in origins:
@@ -370,3 +374,75 @@ def list_dodge_uploads():
             }
             for r in rows
         ]
+
+
+# ── Customer import endpoints ────────────────────────────────────────────────
+
+def _customer_import_payload(row: CustomerImport) -> dict:
+    return {
+        "id":           row.id,
+        "uploaded_at":  row.uploaded_at.isoformat() if row.uploaded_at else None,
+        "storage_key":  row.storage_key,
+        "filename":     row.filename,
+        "total_rows":   row.total_rows or 0,
+        "created_rows": row.created_rows or 0,
+        "updated_rows": row.updated_rows or 0,
+        "review_rows":  row.review_rows or 0,
+        "skipped_rows": row.skipped_rows or 0,
+        "preview_rows": json.loads(row.preview_rows or "[]"),
+    }
+
+
+@app.post("/customers/import")
+async def import_customer_file(file: UploadFile = File(...)):
+    """
+    Import a customer/contact CSV export into the customer_contacts table.
+
+    Expected headers match the TrashLab sample export:
+    Email Address, First Name, Last Name, Company, Phone Number, Address,
+    Address 2, City, State/Province, Postal Code, Country, Tags
+    """
+    from ledger import import_customer_csv
+    from storage import upload, is_configured
+
+    if not file.filename or not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Only .csv files are accepted")
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="CSV file is empty")
+
+    storage_key = None
+    if is_configured():
+        suffix = Path(file.filename).suffix.lower()
+        storage_key = f"customers/{datetime.utcnow().strftime('%Y-%m-%d')}/{file.filename}"
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+        try:
+            upload(tmp_path, storage_key)
+        finally:
+            os.unlink(tmp_path)
+
+    try:
+        record = import_customer_csv(
+            content=content,
+            filename=file.filename,
+            storage_key=storage_key,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return _customer_import_payload(record)
+
+
+@app.get("/customers/imports")
+def list_customer_imports():
+    """List all customer imports, newest first."""
+    with get_db() as session:
+        rows = (
+            session.query(CustomerImport)
+            .order_by(CustomerImport.id.desc())
+            .all()
+        )
+        return [_customer_import_payload(r) for r in rows]
