@@ -49,7 +49,7 @@ def _strip_markdown(raw: str) -> str:
 
 
 def _validate(result: dict) -> bool:
-    required = ["qualifies", "services_needed", "actionability_score", "revenue_estimate"]
+    required = ["qualifies", "services_needed", "actionability_score"]
     return all(k in result for k in required)
 
 
