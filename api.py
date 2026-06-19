@@ -9,6 +9,8 @@ Endpoints
   GET  /runs/{run_id}         → full payload for a specific run
   GET  /leads                 → alias for /runs/latest
   GET  /leads/{project_id}    → most recent Lead row for the given project
+  GET  /dashboard             → lightweight summary for the dashboard page
+  GET  /dashboard/top-leads   → top N leads (rank, name, status, score, tier) for latest run
   GET  /pipeline/status       → current pipeline state
   POST /pipeline/run          → trigger a pipeline run (non-blocking)
   POST /dodge/upload          → upload a Dodge Excel file to object storage + register in DB
@@ -260,6 +262,116 @@ def get_lead(project_id: str):
             raise HTTPException(status_code=404, detail=f"No lead found for project '{project_id}'")
         result = _reconstruct_result(lead)
         return to_web_lead(lead.rank or 0, result)
+
+
+@app.get("/dashboard")
+def get_dashboard():
+    """
+    Lightweight summary for the dashboard page — no full lead payloads.
+    Computes tier counts, status distribution, score distribution, and
+    change trend from the latest run's lead records.
+    """
+    from collections import Counter, defaultdict
+    from formatter import _STATUS_TIER
+
+    with get_db() as session:
+        run = session.query(Run).order_by(desc(Run.run_at)).first()
+        if run is None:
+            raise HTTPException(status_code=404, detail="No runs found")
+        leads = session.query(Lead).filter(Lead.run_id == run.id).all()
+
+    statuses, scores, trend_entries = [], [], []
+    for lead in leads:
+        project     = json.loads(lead.project_snapshot or "{}") if lead.project_snapshot else {}
+        score_result = json.loads(lead.score_result or "{}") if lead.score_result else {}
+        status      = project.get("projectStatus", "")
+        tier        = _STATUS_TIER.get(status, "watch")
+        last_updated = project.get("lastUpdatedDate", "")
+        statuses.append((status, tier))
+        scores.append(score_result.get("final_score", 0))
+        if last_updated:
+            trend_entries.append((last_updated, tier))
+
+    tier_counts    = Counter(t for _, t in statuses)
+    status_counts  = Counter(s for s, _ in statuses)
+
+    _BUCKETS = [
+        ("90-100", 90, 101), ("80-89", 80, 90), ("70-79", 70, 80),
+        ("60-69",  60,  70), ("50-59", 50, 60), ("0-49",   0, 50),
+    ]
+    score_dist = [
+        {"bucket": label, "count": sum(1 for s in scores if lo <= s < hi)}
+        for label, lo, hi in _BUCKETS
+        if any(lo <= s < hi for s in scores)
+    ]
+
+    trend_by_day: dict = defaultdict(lambda: {"changes": 0, "hot": 0})
+    for date_str, tier in trend_entries:
+        try:
+            day = datetime.fromisoformat(date_str[:10]).strftime("%a")
+        except Exception:
+            continue
+        trend_by_day[day]["changes"] += 1
+        if tier == "hot":
+            trend_by_day[day]["hot"] += 1
+
+    return {
+        "run_id":       run.id,
+        "generated_at": run.run_at.isoformat(),
+        "stats": {
+            "ingested":  run.ingested,
+            "filtered":  run.filtered,
+            "qualified": run.qualified,
+            "surfaced":  run.surfaced,
+            "days_back": run.days_back,
+        },
+        "tiers": {
+            "hot":  tier_counts.get("hot", 0),
+            "warm": tier_counts.get("warm", 0),
+        },
+        "status_distribution": [
+            {"status": s, "count": c}
+            for s, c in status_counts.most_common()
+        ],
+        "score_distribution": score_dist,
+        "change_trend": [
+            {"day": day, "changes": v["changes"], "hot": v["hot"]}
+            for day, v in trend_by_day.items()
+        ],
+    }
+
+
+@app.get("/dashboard/top-leads")
+def get_dashboard_top_leads(limit: int = 5):
+    """Top N qualified leads for the latest run, sorted by rank."""
+    from formatter import _STATUS_TIER
+
+    with get_db() as session:
+        run = session.query(Run).order_by(desc(Run.run_at)).first()
+        if run is None:
+            raise HTTPException(status_code=404, detail="No runs found")
+        leads = (
+            session.query(Lead)
+            .filter(Lead.run_id == run.id)
+            .order_by(Lead.rank)
+            .limit(limit)
+            .all()
+        )
+
+    result = []
+    for lead in leads:
+        project      = json.loads(lead.project_snapshot or "{}") if lead.project_snapshot else {}
+        score_result = json.loads(lead.score_result or "{}") if lead.score_result else {}
+        status = project.get("projectStatus", "")
+        result.append({
+            "rank":        lead.rank,
+            "id":          str(lead.project_id or ""),
+            "name":        project.get("title", ""),
+            "status":      status,
+            "score":       score_result.get("final_score", 0),
+            "status_tier": _STATUS_TIER.get(status, "watch"),
+        })
+    return result
 
 
 @app.get("/pipeline/status")

@@ -75,6 +75,45 @@ export interface DodgeUpload {
   filename: string;
 }
 
+export interface DashboardSummary {
+  run_id: string;
+  generated_at: string;
+  stats: {
+    ingested: number;
+    filtered: number;
+    qualified: number;
+    surfaced: number;
+    days_back: number;
+  };
+  tiers: { hot: number; warm: number };
+  status_distribution: { status: string; count: number }[];
+  score_distribution: { bucket: string; count: number }[];
+  change_trend: { day: string; changes: number; hot: number }[];
+}
+
+export interface TopLead {
+  rank: number;
+  id: string;
+  name: string;
+  status: string;
+  score: number;
+  status_tier: string;
+}
+
+/** Lightweight dashboard summary for the latest pipeline run. */
+export async function fetchDashboard(): Promise<DashboardSummary> {
+  const res = await fetch(`${API_URL}/dashboard`);
+  if (!res.ok) throw new Error(`API /dashboard returned ${res.status}`);
+  return res.json();
+}
+
+/** Top N leads (rank, name, status, score, tier) for the latest run. */
+export async function fetchTopLeads(limit = 5): Promise<TopLead[]> {
+  const res = await fetch(`${API_URL}/dashboard/top-leads?limit=${limit}`);
+  if (!res.ok) throw new Error(`API /dashboard/top-leads returned ${res.status}`);
+  return res.json();
+}
+
 /** List all registered Dodge uploads, newest first. */
 export async function fetchDodgeUploads(): Promise<DodgeUpload[]> {
   const res = await fetch(`${API_URL}/dodge/uploads`);
