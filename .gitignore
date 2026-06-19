@@ -11,5 +11,6 @@ frontend/dist/
 frontend/.tanstack/
 frontend/.vite/
 frontend/.vercel/output/
+frontend/.netlify/
 frontend/.nitro/
 dealcenter.db

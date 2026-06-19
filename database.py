@@ -149,6 +149,54 @@ class DodgeUpload(Base):
     filename    = Column(String)               # original filename at upload time
 
 
+class CustomerImport(Base):
+    """
+    Registry of uploaded customer CSV files.
+
+    Each import stores a summary plus a short preview payload for the settings UI.
+    Full contact rows live in customer_contacts.
+    """
+    __tablename__ = "customer_imports"
+
+    id           = Column(Integer, primary_key=True, autoincrement=True)
+    uploaded_at  = Column(DateTime)
+    storage_key  = Column(String)
+    filename     = Column(String)
+    total_rows   = Column(Integer)
+    created_rows = Column(Integer)
+    updated_rows = Column(Integer)
+    review_rows  = Column(Integer)
+    skipped_rows = Column(Integer)
+    preview_rows = Column(Text)                # JSON list of parsed row previews
+
+
+class CustomerContact(Base):
+    """
+    Customer/contact record imported from a TrashLab customer export.
+
+    The sample export is contact-oriented, so company and contact fields are kept
+    together until a fuller CRM integration separates accounts from people.
+    """
+    __tablename__ = "customer_contacts"
+
+    id             = Column(Integer, primary_key=True, autoincrement=True)
+    import_id      = Column(Integer, index=True)
+    imported_at    = Column(DateTime)
+    email          = Column(String, index=True)
+    first_name     = Column(String)
+    last_name      = Column(String)
+    company        = Column(String, index=True)
+    phone          = Column(String)
+    address        = Column(String)
+    address_2      = Column(String)
+    city           = Column(String)
+    state_province = Column(String)
+    postal_code    = Column(String)
+    country        = Column(String)
+    tags           = Column(String)
+    source_status  = Column(String)
+
+
 def get_db() -> Session:
     """Return a new SQLAlchemy 2.0 Session. Use as a context manager."""
     return Session(ENGINE)

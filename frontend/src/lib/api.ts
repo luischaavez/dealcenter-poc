@@ -138,3 +138,59 @@ export async function uploadDodgeFile(
   }
   return res.json();
 }
+
+export interface CustomerImportPreviewRow {
+  email: string;
+  first_name: string;
+  last_name: string;
+  company: string;
+  phone: string;
+  address: string;
+  address_2: string;
+  city: string;
+  state_province: string;
+  postal_code: string;
+  country: string;
+  tags: string;
+  customer: string;
+  contact: string;
+  market: string;
+  status: "Created" | "Updated" | "Review" | "Duplicate";
+}
+
+export interface CustomerImport {
+  id: number;
+  uploaded_at: string | null;
+  storage_key: string | null;
+  filename: string;
+  total_rows: number;
+  created_rows: number;
+  updated_rows: number;
+  review_rows: number;
+  skipped_rows: number;
+  preview_rows: CustomerImportPreviewRow[];
+}
+
+/** List customer imports, newest first. */
+export async function fetchCustomerImports(): Promise<CustomerImport[]> {
+  const res = await fetch(`${API_URL}/customers/imports`);
+  if (!res.ok) throw new Error(`API /customers/imports returned ${res.status}`);
+  return res.json();
+}
+
+/** Upload and import a customer CSV export. */
+export async function uploadCustomerImportFile(
+  file: File,
+): Promise<CustomerImport> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${API_URL}/customers/import`, {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({}));
+    throw new Error((detail as { detail?: string })?.detail ?? `Import failed (${res.status})`);
+  }
+  return res.json();
+}

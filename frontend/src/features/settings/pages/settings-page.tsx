@@ -8,7 +8,13 @@ import {
 } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { fetchDodgeUploads, uploadDodgeFile } from "@/lib/api";
+import {
+  fetchCustomerImports,
+  fetchDodgeUploads,
+  uploadCustomerImportFile,
+  uploadDodgeFile,
+  type CustomerImport,
+} from "@/lib/api";
 import {
   allServices,
   allStatusTiers,
@@ -305,94 +311,269 @@ function ImportsPanel() {
   );
 }
 
+const customerPreviewColumns: Array<{
+  key: keyof CustomerImport["preview_rows"][number];
+  label: string;
+  className?: string;
+}> = [
+  { key: "email", label: "Email Address", className: "min-w-[210px]" },
+  { key: "first_name", label: "First Name", className: "min-w-[130px]" },
+  { key: "last_name", label: "Last Name", className: "min-w-[130px]" },
+  { key: "company", label: "Company", className: "min-w-[220px]" },
+  { key: "phone", label: "Phone Number", className: "min-w-[150px]" },
+  { key: "address", label: "Address", className: "min-w-[260px]" },
+  { key: "address_2", label: "Address 2", className: "min-w-[150px]" },
+  { key: "city", label: "City", className: "min-w-[130px]" },
+  { key: "state_province", label: "State/Province", className: "min-w-[150px]" },
+  { key: "postal_code", label: "Postal Code", className: "min-w-[130px]" },
+  { key: "country", label: "Country", className: "min-w-[120px]" },
+  { key: "tags", label: "Tags", className: "min-w-[180px]" },
+];
+
 function CustomerImportsPanel() {
-  const mockRows = [
-    {
-      id: "customer-1",
-      name: "Brightline Builders",
-      contact: "Maya Torres",
-      market: "Austin",
-      status: "Ready",
+  const queryClient = useQueryClient();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
+  const [processing, setProcessing] = useState(false);
+
+  const { data: imports, isLoading } = useQuery({
+    queryKey: ["customer-imports"],
+    queryFn: fetchCustomerImports,
+  });
+
+  const latestImport = imports?.[0];
+
+  const handleFile = useCallback(
+    async (file: File) => {
+      if (!file.name.toLowerCase().endsWith(".csv")) {
+        toast.error("Only .csv files are accepted");
+        return;
+      }
+      setProcessing(true);
+      try {
+        const result = await uploadCustomerImportFile(file);
+        await queryClient.invalidateQueries({ queryKey: ["customer-imports"] });
+        toast.success(
+          `${file.name} imported: ${result.created_rows} created, ${result.updated_rows} updated`,
+        );
+      } catch (e) {
+        toast.error(`Import failed: ${e}`);
+      } finally {
+        setProcessing(false);
+        if (inputRef.current) inputRef.current.value = "";
+      }
     },
-    {
-      id: "customer-2",
-      name: "Westward GC Partners",
-      contact: "Missing",
-      market: "San Antonio",
-      status: "Review",
+    [queryClient],
+  );
+
+  const onDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragging(false);
+      const file = e.dataTransfer.files[0];
+      if (file) handleFile(file);
     },
-    {
-      id: "customer-3",
-      name: "Summit Civic Construction",
-      contact: "Andre Hill",
-      market: "Dallas",
-      status: "Duplicate",
-    },
-  ];
+    [handleFile],
+  );
 
   return (
     <>
       <Card
         title="Upload customer list"
-        subtitle="Mock workflow for importing customers used by opportunity matching"
+        subtitle="Import TrashLab customer contacts used by opportunity matching"
       >
-        <div className="rounded-md border border-dashed border-border bg-background px-6 py-8">
-          <div className="flex flex-col items-center justify-center text-center gap-2">
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={onDrop}
+          onClick={() => !processing && inputRef.current?.click()}
+          className={cn(
+            "flex flex-col items-center justify-center gap-2 rounded-md border-2 border-dashed px-6 py-10 transition-colors cursor-pointer select-none",
+            dragging
+              ? "border-primary bg-primary/5"
+              : "border-border bg-background hover:border-muted-foreground/40 hover:bg-secondary/30",
+            processing && "pointer-events-none opacity-70",
+          )}
+        >
+          <input
+            ref={inputRef}
+            type="file"
+            accept=".csv"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleFile(file);
+            }}
+          />
+          {processing ? (
+            <Loader2 className="size-7 text-muted-foreground animate-spin" />
+          ) : (
             <Upload className="size-7 text-muted-foreground" />
-            <p className="text-[13px] font-medium text-charcoal">
-              Drop a customer .xlsx or .csv file here
-            </p>
-            <p className="text-[11.5px] text-muted-foreground">
-              Mock-only import preview. No customer records are created yet.
-            </p>
-            <button className="mt-2 h-9 px-3 rounded-md bg-charcoal text-white text-[12.5px] font-medium hover:bg-charcoal/85">
-              Browse file
-            </button>
-          </div>
+          )}
+          <p className="text-[13px] font-medium text-charcoal">
+            {processing ? "Processing customer import…" : "Drop a customer .csv file here"}
+          </p>
+          <p className="text-[11.5px] text-muted-foreground">
+            {processing
+              ? "Parsing rows and updating customer contacts"
+              : "TrashLab CSV export · click to browse"}
+          </p>
         </div>
       </Card>
 
-      <Card title="Preview" subtitle="Example rows from a customer import file">
-        <div className="overflow-auto">
-          <table className="w-full text-[12.5px]">
-            <thead className="text-[10.5px] uppercase tracking-wider text-muted-foreground">
-              <tr className="border-b border-border">
-                <th className="text-left font-medium py-2 pr-3">Customer</th>
-                <th className="text-left font-medium py-2 px-3">Contact</th>
-                <th className="text-left font-medium py-2 px-3">Market</th>
-                <th className="text-right font-medium py-2 pl-3">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {mockRows.map((row) => (
-                <tr key={row.id} className="hover:bg-secondary/40">
-                  <td className="py-2.5 pr-3 font-medium text-charcoal">
-                    {row.name}
-                  </td>
-                  <td className="py-2.5 px-3 text-foreground/85">
-                    {row.contact}
-                  </td>
-                  <td className="py-2.5 px-3 text-muted-foreground">
-                    {row.market}
-                  </td>
-                  <td className="py-2.5 pl-3 text-right">
-                    <ImportStateBadge status={row.status} />
-                  </td>
+      <CustomerImportSummary latestImport={latestImport} isLoading={isLoading} />
+
+      <Card
+        title="Preview"
+        subtitle={
+          latestImport
+            ? `Latest rows from ${latestImport.filename}`
+            : "Rows from the latest customer import"
+        }
+      >
+        {isLoading ? (
+          <div className="flex items-center gap-2 py-4 text-[12.5px] text-muted-foreground">
+            <Loader2 className="size-3.5 animate-spin" /> Loading customer imports…
+          </div>
+        ) : !latestImport ? (
+          <EmptyState message="No customer imports uploaded yet." />
+        ) : !latestImport.preview_rows.length ? (
+          <EmptyState message="The latest import did not contain previewable rows." />
+        ) : (
+          <div className="overflow-auto">
+            <table className="min-w-[1900px] w-full text-[12.5px]">
+              <thead className="text-[10.5px] uppercase tracking-wider text-muted-foreground">
+                <tr className="border-b border-border">
+                  {customerPreviewColumns.map((column) => (
+                    <th
+                      key={column.key}
+                      className={cn(
+                        "text-left font-medium py-2 px-3 first:pl-0",
+                        column.className,
+                      )}
+                    >
+                      {column.label}
+                    </th>
+                  ))}
+                  <th className="text-right font-medium py-2 pl-3 min-w-[110px]">
+                    Status
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {latestImport.preview_rows.map((row, index) => (
+                  <tr key={`${row.email}-${index}`} className="hover:bg-secondary/40">
+                    {customerPreviewColumns.map((column) => (
+                      <td
+                        key={column.key}
+                        className={cn(
+                          "py-2.5 px-3 first:pl-0 align-top text-foreground/85",
+                          column.key === "company" && "font-medium text-charcoal",
+                        )}
+                      >
+                        <span className="line-clamp-2 break-words">
+                          {row[column.key] || "-"}
+                        </span>
+                      </td>
+                    ))}
+                    <td className="py-2.5 pl-3 text-right">
+                      <ImportStateBadge status={row.status} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      <Card title="Import history" subtitle="Customer files imported into DealCenter">
+        {isLoading ? (
+          <div className="flex items-center gap-2 py-4 text-[12.5px] text-muted-foreground">
+            <Loader2 className="size-3.5 animate-spin" /> Loading history…
+          </div>
+        ) : !imports?.length ? (
+          <EmptyState message="No customer import history yet." />
+        ) : (
+          <div className="divide-y divide-border">
+            {imports.map((item) => (
+              <div key={item.id} className="flex items-center gap-3 py-3">
+                <FileSpreadsheet className="size-4 text-muted-foreground shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-[13px] font-medium text-charcoal truncate">
+                    {item.filename}
+                  </p>
+                  <p className="text-[11.5px] text-muted-foreground">
+                    {item.total_rows} rows · {item.created_rows} created ·{" "}
+                    {item.updated_rows} updated · {item.skipped_rows} skipped
+                    {item.uploaded_at
+                      ? ` · imported ${formatDateTime(item.uploaded_at)}`
+                      : ""}
+                  </p>
+                </div>
+                <CheckCircle2 className="size-4 text-[oklch(0.5_0.13_155)] shrink-0" />
+              </div>
+            ))}
+          </div>
+        )}
       </Card>
     </>
   );
 }
 
+function CustomerImportSummary({
+  latestImport,
+  isLoading,
+}: {
+  latestImport?: CustomerImport;
+  isLoading: boolean;
+}) {
+  return (
+    <Card title="Latest import" subtitle="Customer contact records created or updated">
+      {isLoading ? (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          {["Rows", "Created", "Updated", "Needs review"].map((label) => (
+            <div key={label} className="rounded-md border border-border bg-background p-3">
+              <div className="h-3 w-16 rounded bg-secondary animate-pulse" />
+              <div className="mt-3 h-5 w-10 rounded bg-secondary animate-pulse" />
+            </div>
+          ))}
+        </div>
+      ) : !latestImport ? (
+        <EmptyState message="Import a customer CSV to populate customer contacts." />
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          <SummaryStat label="Rows" value={latestImport.total_rows} />
+          <SummaryStat label="Created" value={latestImport.created_rows} />
+          <SummaryStat label="Updated" value={latestImport.updated_rows} />
+          <SummaryStat label="Needs review" value={latestImport.review_rows} />
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function SummaryStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-md border border-border bg-background p-3">
+      <p className="text-[10.5px] uppercase tracking-wider text-muted-foreground">
+        {label}
+      </p>
+      <p className="mt-1 text-[20px] font-semibold text-charcoal num">{value}</p>
+    </div>
+  );
+}
+
 function ImportStateBadge({ status }: { status: string }) {
   const styles =
-    status === "Ready"
+    status === "Created"
       ? "bg-[oklch(0.62_0.13_155/0.12)] text-[oklch(0.4_0.13_155)] border-[oklch(0.62_0.13_155/0.3)]"
-      : status === "Review"
+      : status === "Updated"
+        ? "bg-primary/10 text-primary border-primary/25"
+        : status === "Review"
         ? "bg-[oklch(0.72_0.15_70/0.13)] text-[oklch(0.42_0.15_70)] border-[oklch(0.72_0.15_70/0.3)]"
         : "bg-[oklch(0.605_0.21_28/0.10)] text-[oklch(0.5_0.21_28)] border-[oklch(0.605_0.21_28/0.3)]";
 
